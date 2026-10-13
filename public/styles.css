@@ -381,3 +381,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   .sub-cell::before { content: attr(data-label); display: block; font-size: .75rem; color: var(--muted); margin-bottom: 2px; }
 }
 @media print { .sublist li { white-space: normal; } }
+.color-input input[type=text] { width: 110px; font-family: ui-monospace, Consolas, monospace; text-transform: uppercase; }

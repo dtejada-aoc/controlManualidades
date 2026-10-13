@@ -65,6 +65,12 @@ function listItemText(field, sub) {
 }
 
 const isHexColor = (v) => /^#[0-9a-f]{6}$/i.test(String(v ?? ""));
+
+/** Normaliza un color escrito a mano a #RRGGBB en mayúsculas ("9d432c" → "#9D432C"); null si no es válido. */
+const normalizeHex = (v) => {
+  const s = String(v ?? "").trim().replace(/^#?/, "#").toUpperCase();
+  return isHexColor(s) ? s : null;
+};
 const swatch = (hex) => `<span class="swatch" style="background:${hex}"></span>`;
 
 /** Formatea un valor según la definición de campo (texto plano, sin HTML). */
@@ -110,7 +116,7 @@ function fmtValueHtml(field, value) {
       return `<li>${head} <span class="muted">${esc(tail)}</span></li>`;
     }).join("")}</ul>`;
   }
-  if (field.tipo === "color") return isHexColor(value) ? `${swatch(value)} <span class="muted">${esc(value)}</span>` : esc(value);
+  if (field.tipo === "color") return isHexColor(value) ? `${swatch(value)} <span class="muted">${esc(value.toUpperCase())}</span>` : esc(value);
   if (field.tipo === "impresion" && PRINTS[value]) {
     return `<a href="#/i/${esc(value)}">${esc(PRINTS[value].nombre)}</a>`;
   }
@@ -598,10 +604,15 @@ function fieldInput(field, value, path) {
       return `<select ${attrs}><option value=""></option>${[...opts, ...extra].map((o) =>
         `<option ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     }
-    case "color":
-      // Un <input type="color"> nunca está vacío: solo se guarda si el usuario elige un color.
-      return `<div class="color-input"><input type="color" ${attrs} value="${isHexColor(value) ? esc(value) : "#808080"}">
-        <span class="muted">${isHexColor(value) ? esc(value) : "sin muestra"}</span></div>`;
+    case "color": {
+      // Selector visual + código #RRGGBB editable. El valor se guarda desde el campo de texto
+      // (el selector nunca está vacío, así que no se guarda nada hasta que se elige o escribe un color).
+      const hex = isHexColor(value) ? value.toUpperCase() : "";
+      return `<div class="color-input">
+        <input type="color" data-color-picker aria-label="${esc(field.etiqueta)}" value="${hex || "#808080"}">
+        <input type="text" ${attrs} value="${esc(hex)}" placeholder="#RRGGBB" maxlength="7" spellcheck="false" autocomplete="off">
+      </div>`;
+    }
     case "booleano":
       return `<label class="check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}> Sí</label>`;
     case "impresion": {
@@ -678,6 +689,7 @@ function readInput(holder) {
   }
   if (tipo === "booleano") return holder.checked;
   if (tipo === "numero" || tipo === "moneda") return holder.value === "" ? null : Number(holder.value);
+  if (tipo === "color") return normalizeHex(holder.value); // incompleto o no válido → no se guarda
   return holder.value.trim() === "" ? null : holder.value;
 }
 
@@ -1075,6 +1087,30 @@ function linkCell(value, abrirAttrs) {
 }
 
 // viewRegister() está en registros.js
+
+// ======================================================= CAMPOS DE COLOR
+
+// Selector visual y código #RRGGBB van sincronizados; el código se guarda en mayúsculas.
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (el.matches?.("[data-color-picker]")) {
+    const text = el.parentElement.querySelector('[data-tipo="color"]');
+    text.value = el.value.toUpperCase();
+    text.classList.remove("invalid");
+    text.dispatchEvent(new Event("input", { bubbles: true }));
+  } else if (el.matches?.('input[data-tipo="color"]')) {
+    const hex = normalizeHex(el.value);
+    if (hex) el.parentElement.querySelector("[data-color-picker]").value = hex.toLowerCase();
+  }
+});
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (!el.matches?.('input[data-tipo="color"]')) return;
+  const hex = normalizeHex(el.value);
+  if (hex) el.value = hex;                       // "9d432c" → "#9D432C"
+  el.classList.toggle("invalid", !hex && el.value.trim() !== "");
+  if (!hex && el.value.trim() !== "") toast("Color no válido: usa el formato #RRGGBB, p. ej. #9D432C", true);
+}); // en fase de burbuja: después del formulario, que ya guarda el valor normalizado
 
 // ============================================================ VISOR FOTOS
 

@@ -235,7 +235,6 @@ async function viewRegister(def, params = "") {
         renderFields();
         return;
       }
-      if (f?.tipo === "color") holder.nextElementSibling.textContent = holder.value;
       updateComputed();
     });
     form.scrollIntoView({ block: "start", behavior: "smooth" });
