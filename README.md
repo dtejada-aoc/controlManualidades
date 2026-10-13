@@ -1,0 +1,78 @@
+# Registro de impresiones 3D
+
+Aplicación local para registrar impresiones 3D: placas, filamento, costes, accesorios, pintura y fotos.
+
+Funciona en local, sin base de datos (todo se guarda en ficheros JSON) y sin dependencias externas.
+
+## Requisitos
+
+- [Python 3.9 o superior](https://www.python.org/downloads/) (solo la librería estándar).
+- Un navegador moderno (Chrome, Edge, Firefox).
+
+## Instalación y arranque
+
+```bash
+git clone https://github.com/dtejada-aoc/impresion3d.git
+cd impresion3d
+python app.py
+```
+
+En Windows también puedes hacer doble clic en `iniciar.bat`. Se abre http://127.0.0.1:8765 en el navegador.
+La primera vez la app arranca vacía y crea la carpeta `data/` con los catálogos iniciales.
+
+El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y solo acepta cambios hechos desde la propia app.
+
+## Pantallas
+
+- **Impresiones**: listado con totales; cada ficha muestra producción, filamento y ventas.
+- **Ventas**: todas las ventas con su beneficio. Se registran desde la ficha con **+ Venta**.
+- **Gastos**: compras de material de apoyo (bobinas, recambios, limpieza…) con desglose por tipo y año.
+  Es solo control del gasto: no se resta de los beneficios de las impresiones (el filamento ya se cuenta en el coste de cada placa).
+- **Informes**: resumen general, gastos, producción y ventas, con filtro por año y botón
+  **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
+  Cada impresión también tiene botón **PDF** para exportar su ficha.
+- **Catálogos**: impresoras (una marcada por defecto), accesorios con su precio por unidad y tipos de gasto.
+
+## Cómo se calcula
+
+- **Coste por unidad** = coste total ÷ unidades obtenidas.
+- **Beneficio de lo vendido** = ingresos − coste por unidad × unidades vendidas.
+- **Balance total** = ingresos − coste total (en positivo: la impresión ya está amortizada).
+- El precio de un accesorio se copia del catálogo al elegirlo: si luego cambias el precio
+  en el catálogo, las impresiones anteriores conservan el suyo.
+
+## Dónde se guardan los datos
+
+```
+data/impresiones/<id>/datos.json   ← datos de la impresión
+data/impresiones/<id>/fotos/       ← fotos
+data/catalogos/*.json              ← impresoras, accesorios y tipos de gasto
+data/registros/gastos.json         ← gastos
+data/papelera/                     ← lo que eliminas desde la app (recuperable)
+```
+
+Para hacer una copia de seguridad basta con copiar la carpeta `data`. Esta carpeta está en `.gitignore`:
+tus datos nunca se suben al repositorio.
+
+## Personalizar campos: `config/campos.json`
+
+- `secciones`: bloques del formulario. Con `"repetible": true` se pueden añadir varios elementos (placas, accesorios…).
+- `campos`: cada campo tiene `id`, `etiqueta` y `tipo`:
+  `texto`, `textoLargo`, `numero` (con `unidad` opcional), `moneda`, `duracion` (se guarda en minutos),
+  `fecha`, `seleccion` (con `opciones`), `booleano`, `enlace`.
+- Opciones extra: `obligatorio`, `ayuda`, `porDefecto`, `enListado` (columna en el listado).
+- Tipo `catalogo` (con `"catalogo": "accesorios"`): desplegable con los elementos del catálogo;
+  `rellena` copia datos del elemento elegido a la fila (ej. el precio).
+- `formula`: campo calculado, p. ej. `"cantidad * precioUnidad"` (admite + - * / y paréntesis).
+- `porDefecto`: valor inicial (`"hoy"` para fechas).
+- `total`: suma el campo en uno o varios totales de la lista `totales` (ej. `"total": "coste"`).
+- `totales` también admite `formula` (con otros totales o campos generales), `requiere`
+  (solo se muestra si existen esos totales), `grupo`, `resumen` (recuadro en el listado) y `signo` (verde/rojo).
+- `catalogos`: define los catálogos y sus campos; `inicial` son los elementos con los que se crean.
+- `registros`: listados independientes como Gastos (`agruparPor` indica el campo del desglose).
+  Para que aparezca en el menú, añade su enlace en `public/index.html`.
+
+Para arrancar en otro puerto: `python app.py --port 8800`.
+
+Recarga la página después de editar la configuración. Si quitas un campo, los datos antiguos no se pierden:
+aparecen como "campo antiguo" en la ficha.

@@ -1,0 +1,173 @@
+{
+  "moneda": "€",
+
+  "catalogos": [
+    {
+      "id": "impresoras",
+      "titulo": "Impresoras",
+      "elemento": "Impresora",
+      "campos": [
+        { "id": "nombre",        "etiqueta": "Nombre",      "tipo": "texto", "obligatorio": true },
+        { "id": "notas",         "etiqueta": "Notas",       "tipo": "texto" },
+        { "id": "predeterminada","etiqueta": "Por defecto", "tipo": "booleano", "unico": true }
+      ],
+      "inicial": [
+        { "nombre": "BambuLab A1", "predeterminada": true }
+      ]
+    },
+    {
+      "id": "accesorios",
+      "titulo": "Accesorios",
+      "elemento": "Accesorio",
+      "campos": [
+        { "id": "nombre",      "etiqueta": "Nombre",             "tipo": "texto", "obligatorio": true },
+        { "id": "precioUnidad","etiqueta": "Precio por unidad",  "tipo": "moneda" },
+        { "id": "proveedor",   "etiqueta": "Proveedor",          "tipo": "texto" },
+        { "id": "enlace",      "etiqueta": "Enlace",             "tipo": "enlace" }
+      ],
+      "inicial": []
+    },
+    {
+      "id": "tiposGasto",
+      "titulo": "Tipos de gasto",
+      "elemento": "Tipo",
+      "campos": [
+        { "id": "nombre", "etiqueta": "Nombre", "tipo": "texto", "obligatorio": true },
+        { "id": "notas",  "etiqueta": "Notas",  "tipo": "texto" }
+      ],
+      "inicial": [
+        { "nombre": "Bobinas" },
+        { "nombre": "Recambios" },
+        { "nombre": "Material de limpieza" },
+        { "nombre": "Postprocesado" },
+        { "nombre": "Pintura" }
+      ]
+    }
+  ],
+
+  "registros": [
+    {
+      "id": "gastos",
+      "titulo": "Gastos",
+      "elemento": "Gasto",
+      "descripcion": "Compras de material de apoyo para la impresora.",
+      "agruparPor": "tipo",
+      "campos": [
+        { "id": "fecha",       "etiqueta": "Fecha de compra", "tipo": "fecha", "porDefecto": "hoy", "enListado": true },
+        { "id": "nombre",      "etiqueta": "Nombre",          "tipo": "texto", "obligatorio": true, "enListado": true },
+        { "id": "tipo",        "etiqueta": "Tipo",            "tipo": "catalogo", "catalogo": "tiposGasto", "obligatorio": true, "enListado": true },
+        { "id": "precio",      "etiqueta": "Precio de compra","tipo": "moneda", "obligatorio": true, "total": true, "enListado": true },
+        { "id": "enlace",      "etiqueta": "Enlace o factura","tipo": "enlace", "enListado": true,
+          "ayuda": "URL de la tienda o ruta de la factura (D:\\…\\factura.pdf)" },
+        { "id": "descripcion", "etiqueta": "Descripción",     "tipo": "textoLargo" }
+      ]
+    }
+  ],
+
+  "totales": [
+    { "id": "coste",            "etiqueta": "Coste total",          "tipo": "moneda",   "grupo": "Producción", "enListado": true, "resumen": true },
+    { "id": "costeUnidad",      "etiqueta": "Coste por unidad",     "tipo": "moneda",   "grupo": "Producción", "enListado": true,
+      "formula": "coste / unidades", "requiere": ["coste"], "sumable": false },
+    { "id": "tiempoImpresion",  "etiqueta": "Tiempo de impresión",  "tipo": "duracion", "grupo": "Producción", "enListado": true, "resumen": true },
+    { "id": "tiempoPintura",    "etiqueta": "Tiempo de pintura",    "tipo": "duracion", "grupo": "Producción" },
+    { "id": "gramosModelo",     "etiqueta": "Filamento modelo",     "tipo": "numero", "unidad": "g", "grupo": "Filamento" },
+    { "id": "gramosDesperdicio","etiqueta": "Filamento desperdiciado", "tipo": "numero", "unidad": "g", "grupo": "Filamento" },
+    { "id": "gramosTotal",      "etiqueta": "Filamento total",      "tipo": "numero", "unidad": "g", "grupo": "Filamento", "resumen": true },
+    { "id": "porcentajeDesperdicio", "etiqueta": "% desperdicio",   "tipo": "porcentaje", "grupo": "Filamento",
+      "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false },
+
+    { "id": "unidadesVendidas", "etiqueta": "Unidades vendidas",    "tipo": "numero", "grupo": "Ventas" },
+    { "id": "unidadesDisponibles","etiqueta": "Unidades sin vender","tipo": "numero", "grupo": "Ventas",
+      "formula": "unidades - unidadesVendidas", "requiere": ["unidadesVendidas"] },
+    { "id": "ingresos",         "etiqueta": "Ingresos",             "tipo": "moneda", "grupo": "Ventas", "enListado": true, "resumen": true },
+    { "id": "costeVendido",     "etiqueta": "Coste de lo vendido",  "tipo": "moneda", "grupo": "Ventas",
+      "formula": "costeUnidad * unidadesVendidas", "requiere": ["ingresos"] },
+    { "id": "beneficio",        "etiqueta": "Beneficio de lo vendido", "tipo": "moneda", "grupo": "Ventas", "resumen": true,
+      "formula": "ingresos - costeVendido", "requiere": ["ingresos"], "signo": true,
+      "ayuda": "Ingresos menos el coste de las unidades vendidas" },
+    { "id": "margen",           "etiqueta": "Margen",               "tipo": "porcentaje", "grupo": "Ventas",
+      "formula": "beneficio / ingresos * 100", "requiere": ["ingresos"], "sumable": false, "signo": true },
+    { "id": "balance",          "etiqueta": "Balance total",        "tipo": "moneda", "grupo": "Ventas", "enListado": true, "resumen": true,
+      "formula": "ingresos - coste", "requiere": ["ingresos"], "signo": true,
+      "ayuda": "Ingresos menos el coste total de la impresión (¿ya está amortizada?)" }
+  ],
+
+  "secciones": [
+    {
+      "id": "general",
+      "titulo": "Datos generales",
+      "repetible": false,
+      "campos": [
+        { "id": "nombre",   "etiqueta": "Nombre del objeto", "tipo": "texto", "obligatorio": true },
+        { "id": "fecha",    "etiqueta": "Fecha",             "tipo": "fecha", "porDefecto": "hoy", "enListado": true },
+        { "id": "estado",   "etiqueta": "Estado",            "tipo": "seleccion", "porDefecto": "Pendiente",
+          "opciones": ["Pendiente", "Imprimiendo", "Impreso", "Pintando", "Terminado", "Fallido"], "enListado": true },
+        { "id": "unidades", "etiqueta": "Unidades obtenidas", "tipo": "numero", "porDefecto": 1, "enListado": true,
+          "ayuda": "Piezas iguales que salen de esta impresión (para el coste por unidad)" },
+        { "id": "material", "etiqueta": "Material",          "tipo": "seleccion",
+          "opciones": ["PLA", "PETG", "ABS", "ASA", "TPU", "Resina"] },
+        { "id": "impresora","etiqueta": "Impresora",         "tipo": "catalogo", "catalogo": "impresoras" },
+        { "id": "enlace",   "etiqueta": "Modelo (web o fichero)", "tipo": "enlace",
+          "ayuda": "Una URL o la ruta del fichero .3mf; desde la ficha podrás abrirlo" },
+        { "id": "notas",    "etiqueta": "Notas",             "tipo": "textoLargo" }
+      ]
+    },
+    {
+      "id": "placas",
+      "titulo": "Placas de impresión",
+      "repetible": true,
+      "elemento": "Placa",
+      "inicial": 1,
+      "campos": [
+        { "id": "nombre",            "etiqueta": "Descripción",            "tipo": "texto" },
+        { "id": "tiempo",            "etiqueta": "Tiempo de impresión",    "tipo": "duracion", "total": "tiempoImpresion" },
+        { "id": "gramosModelo",      "etiqueta": "Gramos del modelo",      "tipo": "numero", "unidad": "g", "total": ["gramosModelo", "gramosTotal"] },
+        { "id": "gramosDesperdicio", "etiqueta": "Gramos desperdiciados",  "tipo": "numero", "unidad": "g", "total": ["gramosDesperdicio", "gramosTotal"],
+          "ayuda": "Soportes, purga, torre de limpieza, borde…" },
+        { "id": "coste",             "etiqueta": "Coste",                  "tipo": "moneda", "total": "coste" },
+        { "id": "correcta",          "etiqueta": "Impresión correcta",     "tipo": "booleano", "porDefecto": true }
+      ]
+    },
+    {
+      "id": "accesorios",
+      "titulo": "Accesorios",
+      "repetible": true,
+      "elemento": "Accesorio",
+      "campos": [
+        { "id": "accesorio",   "etiqueta": "Accesorio",          "tipo": "catalogo", "catalogo": "accesorios",
+          "rellena": { "precioUnidad": "precioUnidad" } },
+        { "id": "cantidad",    "etiqueta": "Cantidad",           "tipo": "numero", "porDefecto": 1, "subtotal": false },
+        { "id": "precioUnidad","etiqueta": "Precio por unidad",  "tipo": "moneda", "subtotal": false,
+          "ayuda": "Se copia del catálogo al elegir el accesorio" },
+        { "id": "coste",       "etiqueta": "Coste",              "tipo": "moneda", "formula": "cantidad * precioUnidad", "total": "coste" }
+      ]
+    },
+    {
+      "id": "pintura",
+      "titulo": "Pintura y acabado",
+      "repetible": false,
+      "campos": [
+        { "id": "tiempo",    "etiqueta": "Tiempo de pintura",      "tipo": "duracion", "total": "tiempoPintura" },
+        { "id": "materiales","etiqueta": "Pinturas / materiales",  "tipo": "texto" },
+        { "id": "coste",     "etiqueta": "Coste de materiales",    "tipo": "moneda", "total": "coste" },
+        { "id": "notas",     "etiqueta": "Notas de acabado",       "tipo": "textoLargo" }
+      ]
+    },
+    {
+      "id": "ventas",
+      "titulo": "Ventas",
+      "repetible": true,
+      "elemento": "Venta",
+      "campos": [
+        { "id": "fecha",       "etiqueta": "Fecha",                     "tipo": "fecha", "porDefecto": "hoy" },
+        { "id": "cantidad",    "etiqueta": "Unidades vendidas",         "tipo": "numero", "porDefecto": 1, "total": "unidadesVendidas" },
+        { "id": "precioUnidad","etiqueta": "Precio de venta por unidad","tipo": "moneda", "subtotal": false },
+        { "id": "importe",     "etiqueta": "Importe",                   "tipo": "moneda", "formula": "cantidad * precioUnidad", "total": "ingresos" },
+        { "id": "canal",       "etiqueta": "Canal",                     "tipo": "seleccion",
+          "opciones": ["En mano", "Wallapop", "Etsy", "Vinted", "Feria", "Encargo", "Otro"] },
+        { "id": "cliente",     "etiqueta": "Cliente",                   "tipo": "texto" },
+        { "id": "notas",       "etiqueta": "Notas",                     "tipo": "texto" }
+      ]
+    }
+  ]
+}

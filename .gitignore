@@ -1,0 +1,18 @@
+# Datos propios (impresiones, fotos, catálogos, gastos, papelera)
+data/
+
+# Ficheros de modelos 3D
+3mf/
+*.3mf
+
+# Temporales
+*.tmp
+__pycache__/
+*.pyc
+
+# Sistema / editores
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
