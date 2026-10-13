@@ -61,6 +61,38 @@
           "ayuda": "URL de la tienda o ruta de la factura (D:\\…\\factura.pdf)" },
         { "id": "descripcion", "etiqueta": "Descripción",     "tipo": "textoLargo" }
       ]
+    },
+    {
+      "id": "ventas",
+      "titulo": "Ventas",
+      "elemento": "Venta",
+      "genero": "f",
+      "descripcion": "Piezas vendidas. Cada unidad vendida cuenta como una pieza impresa: coste = unidades × coste por unidad de la impresión.",
+      "agruparPor": "canal",
+      "resumen": [
+        { "id": "ventas",     "etiqueta": "Ventas",             "tipo": "numero", "contar": true },
+        { "id": "unidades",   "etiqueta": "Unidades vendidas",  "tipo": "numero", "suma": "cantidad" },
+        { "id": "ingresos",   "etiqueta": "Ingresos",           "tipo": "moneda", "suma": "importe" },
+        { "id": "coste",      "etiqueta": "Coste",              "tipo": "moneda", "suma": "coste" },
+        { "id": "beneficio",  "etiqueta": "Beneficio",          "tipo": "moneda", "suma": "beneficio", "signo": true },
+        { "id": "margen",     "etiqueta": "Margen",             "tipo": "porcentaje", "formula": "beneficio / ingresos * 100", "signo": true }
+      ],
+      "campos": [
+        { "id": "fecha",        "etiqueta": "Fecha",                       "tipo": "fecha", "porDefecto": "hoy", "enListado": true },
+        { "id": "impresion",    "etiqueta": "Impresión",                   "tipo": "impresion", "obligatorio": true, "enListado": true,
+          "rellena": { "costeUnidad": "costeUnidad" } },
+        { "id": "cantidad",     "etiqueta": "Unidades vendidas",           "tipo": "numero", "porDefecto": 1, "obligatorio": true, "enListado": true },
+        { "id": "precioUnidad", "etiqueta": "Precio de venta por unidad",  "tipo": "moneda", "obligatorio": true, "enListado": true },
+        { "id": "costeUnidad",  "etiqueta": "Coste por unidad",            "tipo": "moneda", "enListado": true,
+          "ayuda": "Se copia de la impresión al elegirla; ajústalo si la reimpresión te ha costado distinto" },
+        { "id": "importe",      "etiqueta": "Importe",                     "tipo": "moneda", "formula": "cantidad * precioUnidad", "total": true, "enListado": true },
+        { "id": "coste",        "etiqueta": "Coste",                       "tipo": "moneda", "formula": "cantidad * costeUnidad" },
+        { "id": "beneficio",    "etiqueta": "Beneficio",                   "tipo": "moneda", "formula": "cantidad * (precioUnidad - costeUnidad)", "signo": true, "enListado": true },
+        { "id": "canal",        "etiqueta": "Canal",                       "tipo": "seleccion", "enListado": true,
+          "opciones": ["En mano", "Wallapop", "Etsy", "Vinted", "Feria", "Encargo", "Otro"] },
+        { "id": "cliente",      "etiqueta": "Cliente",                     "tipo": "texto" },
+        { "id": "notas",        "etiqueta": "Notas",                       "tipo": "texto" }
+      ]
     }
   ],
 
@@ -74,22 +106,7 @@
     { "id": "gramosDesperdicio","etiqueta": "Filamento desperdiciado", "tipo": "numero", "unidad": "g", "grupo": "Filamento" },
     { "id": "gramosTotal",      "etiqueta": "Filamento total",      "tipo": "numero", "unidad": "g", "grupo": "Filamento", "resumen": true },
     { "id": "porcentajeDesperdicio", "etiqueta": "% desperdicio",   "tipo": "porcentaje", "grupo": "Filamento",
-      "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false },
-
-    { "id": "unidadesVendidas", "etiqueta": "Unidades vendidas",    "tipo": "numero", "grupo": "Ventas" },
-    { "id": "unidadesDisponibles","etiqueta": "Unidades sin vender","tipo": "numero", "grupo": "Ventas",
-      "formula": "unidades - unidadesVendidas", "requiere": ["unidadesVendidas"] },
-    { "id": "ingresos",         "etiqueta": "Ingresos",             "tipo": "moneda", "grupo": "Ventas", "enListado": true, "resumen": true },
-    { "id": "costeVendido",     "etiqueta": "Coste de lo vendido",  "tipo": "moneda", "grupo": "Ventas",
-      "formula": "costeUnidad * unidadesVendidas", "requiere": ["ingresos"] },
-    { "id": "beneficio",        "etiqueta": "Beneficio de lo vendido", "tipo": "moneda", "grupo": "Ventas", "resumen": true,
-      "formula": "ingresos - costeVendido", "requiere": ["ingresos"], "signo": true,
-      "ayuda": "Ingresos menos el coste de las unidades vendidas" },
-    { "id": "margen",           "etiqueta": "Margen",               "tipo": "porcentaje", "grupo": "Ventas",
-      "formula": "beneficio / ingresos * 100", "requiere": ["ingresos"], "sumable": false, "signo": true },
-    { "id": "balance",          "etiqueta": "Balance total",        "tipo": "moneda", "grupo": "Ventas", "enListado": true, "resumen": true,
-      "formula": "ingresos - coste", "requiere": ["ingresos"], "signo": true,
-      "ayuda": "Ingresos menos el coste total de la impresión (¿ya está amortizada?)" }
+      "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false }
   ],
 
   "secciones": [
@@ -151,22 +168,6 @@
         { "id": "materiales","etiqueta": "Pinturas / materiales",  "tipo": "texto" },
         { "id": "coste",     "etiqueta": "Coste de materiales",    "tipo": "moneda", "total": "coste" },
         { "id": "notas",     "etiqueta": "Notas de acabado",       "tipo": "textoLargo" }
-      ]
-    },
-    {
-      "id": "ventas",
-      "titulo": "Ventas",
-      "repetible": true,
-      "elemento": "Venta",
-      "campos": [
-        { "id": "fecha",       "etiqueta": "Fecha",                     "tipo": "fecha", "porDefecto": "hoy" },
-        { "id": "cantidad",    "etiqueta": "Unidades vendidas",         "tipo": "numero", "porDefecto": 1, "total": "unidadesVendidas" },
-        { "id": "precioUnidad","etiqueta": "Precio de venta por unidad","tipo": "moneda", "subtotal": false },
-        { "id": "importe",     "etiqueta": "Importe",                   "tipo": "moneda", "formula": "cantidad * precioUnidad", "total": "ingresos" },
-        { "id": "canal",       "etiqueta": "Canal",                     "tipo": "seleccion",
-          "opciones": ["En mano", "Wallapop", "Etsy", "Vinted", "Feria", "Encargo", "Otro"] },
-        { "id": "cliente",     "etiqueta": "Cliente",                   "tipo": "texto" },
-        { "id": "notas",       "etiqueta": "Notas",                     "tipo": "texto" }
       ]
     }
   ]

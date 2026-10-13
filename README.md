@@ -24,10 +24,11 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 
 ## Pantallas
 
-- **Impresiones**: listado con totales; cada ficha muestra producción, filamento y ventas.
-- **Ventas**: todas las ventas con su beneficio. Se registran desde la ficha con **+ Venta**.
+- **Impresiones**: listado con totales; cada ficha muestra producción y filamento.
 - **Gastos**: compras de material de apoyo (bobinas, recambios, limpieza…) con desglose por tipo y año.
   Es solo control del gasto: no se resta de los beneficios de las impresiones (el filamento ya se cuenta en el coste de cada placa).
+- **Ventas**: registro aparte (no se mezcla con las impresiones). Cada venta indica la impresión vendida,
+  unidades, precio por unidad y coste por unidad (se copia de la impresión y se puede ajustar).
 - **Informes**: resumen general, gastos, producción y ventas, con filtro por año y botón
   **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
   Cada impresión también tiene botón **PDF** para exportar su ficha.
@@ -36,8 +37,8 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 ## Cómo se calcula
 
 - **Coste por unidad** = coste total ÷ unidades obtenidas.
-- **Beneficio de lo vendido** = ingresos − coste por unidad × unidades vendidas.
-- **Balance total** = ingresos − coste total (en positivo: la impresión ya está amortizada).
+- **Beneficio de una venta** = unidades × (precio de venta − coste por unidad). Cada unidad vendida
+  cuenta como una pieza impresa: si vendes 20, el coste es el de imprimir 20.
 - El precio de un accesorio se copia del catálogo al elegirlo: si luego cambias el precio
   en el catálogo, las impresiones anteriores conservan el suyo.
 
@@ -48,6 +49,7 @@ data/impresiones/<id>/datos.json   ← datos de la impresión
 data/impresiones/<id>/fotos/       ← fotos
 data/catalogos/*.json              ← impresoras, accesorios y tipos de gasto
 data/registros/gastos.json         ← gastos
+data/registros/ventas.json         ← ventas
 data/papelera/                     ← lo que eliminas desde la app (recuperable)
 ```
 

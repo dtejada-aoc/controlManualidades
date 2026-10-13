@@ -10,6 +10,7 @@
 const app = document.getElementById("app");
 let CONFIG = null;
 const CATALOGS = {}; // id → lista de elementos
+const PRINTS = {};   // id → { nombre, tot } (para los campos de tipo "impresion")
 let formDirty = false;
 
 // ------------------------------------------------------------ utilidades
@@ -63,6 +64,7 @@ function fmtValue(field, value) {
     case "duracion": return fmtDuration(value);
     case "fecha": return fmtDate(value);
     case "booleano": return value ? "Sí" : "No";
+    case "impresion": return PRINTS[value]?.nombre || `${value} (no encontrada)`;
     default: return String(value);
   }
 }
@@ -78,6 +80,9 @@ function fmtValueHtml(field, value) {
     return `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(value)}</a>`;
   }
   if (field.id === "estado") return `<span class="badge badge-${esc(value)}">${esc(value)}</span>`;
+  if (field.tipo === "impresion" && PRINTS[value]) {
+    return `<a href="#/i/${esc(value)}">${esc(PRINTS[value].nombre)}</a>`;
+  }
   if (field.signo && Number(value) !== 0) {
     return `<span class="${Number(value) > 0 ? "pos" : "neg"}">${esc(fmtValue(field, value))}</span>`;
   }
@@ -111,6 +116,14 @@ const sectionById = (id) => sections().find((s) => s.id === id);
 const generalSection = () => sectionById("general") || sections()[0];
 const totalDefs = () => CONFIG.totales || [];
 const printName = (p) => p.general?.nombre || "(sin nombre)";
+
+/** Carga las impresiones (nombre y totales) para los desplegables de tipo "impresion". */
+async function loadPrints(items) {
+  items ??= await api("GET", "/api/impresiones");
+  for (const k of Object.keys(PRINTS)) delete PRINTS[k];
+  for (const it of items) PRINTS[it.id] = { nombre: printName(it), tot: it._tot || computeTotals(it) };
+  return items;
+}
 
 async function loadCatalogs() {
   await Promise.all((CONFIG.catalogos || []).map(async (c) => {
@@ -284,7 +297,7 @@ async function viewList() {
       </table></div>` : `
       <div class="card empty">
         <h2>Todavía no hay impresiones</h2>
-        <p class="muted">Registra tu primera impresión con sus placas, accesorios, pintura, ventas y fotos.</p>
+        <p class="muted">Registra tu primera impresión con sus placas, accesorios, pintura y fotos.</p>
         <a class="btn btn-primary" href="#/nueva">+ Nueva impresión</a>
       </div>`}
   `;
@@ -338,6 +351,9 @@ async function viewDetail(id) {
   const it = await api("GET", `/api/impresiones/${encodeURIComponent(id)}`);
   const tot = computeTotals(it);
   const gen = generalSection();
+  // Las ventas viven en su propio registro; aquí solo se enlazan discretamente.
+  const sold = (CONFIG.registros || []).some((r) => r.id === "ventas")
+    ? (await api("GET", "/api/registros/ventas")).filter((v) => v.impresion === it.id) : [];
   const knownKeys = new Set(["id", "fotos", "creado", "modificado", ...sections().map((s) => s.id)]);
 
   // Indicadores agrupados (Producción, Filamento, Ventas…)
@@ -398,7 +414,6 @@ async function viewDetail(id) {
         </p>
       </div>
       <div class="actions">
-        ${sectionById("ventas") ? `<a class="btn" href="#/editar/${esc(it.id)}?venta">+ Venta</a>` : ""}
         <a class="btn" href="#/editar/${esc(it.id)}">Editar</a>
         <button class="btn" id="pdf">PDF</button>
         <button class="btn" id="dup">Duplicar</button>
@@ -425,6 +440,8 @@ async function viewDetail(id) {
 
     <p class="muted" style="font-size:.8rem;margin-top:20px">
       Creado ${esc((it.creado || "").replace("T", " "))} · Modificado ${esc((it.modificado || "").replace("T", " "))}
+      ${sold.length ? `<span class="no-print"> · Vendida: ${esc(numFmt.format(sold.reduce((s, v) => s + (Number(v.cantidad) || 0), 0)))} ud. en
+        ${sold.length} venta(s) · <a href="#/ventas?impresion=${encodeURIComponent(it.id)}">ver ventas</a></span>` : ""}
     </p>
   `;
 
@@ -500,6 +517,13 @@ function fieldInput(field, value, path) {
     }
     case "booleano":
       return `<label class="check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}> Sí</label>`;
+    case "impresion": {
+      const opts = Object.entries(PRINTS).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, "es"));
+      const missing = !isEmpty(value) && !PRINTS[value];
+      return `<select ${attrs}><option value=""></option>
+        ${missing ? `<option value="${esc(value)}" selected>${esc(value)} (no encontrada)</option>` : ""}
+        ${opts.map(([id, p]) => `<option value="${esc(id)}" ${id === value ? "selected" : ""}>${esc(p.nombre)}</option>`).join("")}</select>`;
+    }
     default:
       return `<input type="text" ${attrs} value="${esc(value)}">`;
   }
@@ -600,14 +624,10 @@ async function viewForm(id) {
       }
     }
   }
-  if (params === "venta" && sectionById("ventas")) {
-    draft.ventas = [...asArray(draft.ventas), newRow(sectionById("ventas"))];
-  }
-
   const existingPhotos = [...(draft.fotos || [])];
   const removedPhotos = new Set();
   const pendingPhotos = []; // { file, url }
-  formDirty = params === "venta";
+  formDirty = false;
 
   app.innerHTML = `
     <a class="back" href="${editing ? `#/i/${esc(id)}` : "#/"}">← ${editing ? "Volver a la impresión" : "Volver al listado"}</a>
@@ -637,7 +657,7 @@ async function viewForm(id) {
   // --- cálculos en vivo
   const updateSummary = () => {
     const tot = computeTotals(draft);
-    const show = ["coste", "costeUnidad", "ingresos", "balance"]
+    const show = ["coste", "costeUnidad"]
       .map((k) => totalDefs().find((t) => t.id === k)).filter((t) => t && !isEmpty(tot[t.id]));
     document.getElementById("summary").innerHTML = show.map((t) =>
       `<span><span class="muted">${esc(t.etiqueta)}:</span> <strong>${fmtValueHtml(t, tot[t.id])}</strong></span>`).join("");
@@ -722,12 +742,6 @@ async function viewForm(id) {
     updateComputed(sec);
   });
 
-  if (params === "venta") {
-    const items = app.querySelectorAll('[data-sec="ventas"] .repeat-item');
-    const last = items[items.length - 1];
-    last?.scrollIntoView({ block: "center" });
-    last?.querySelector('[data-path$=".precioUnidad"]')?.focus();
-  }
 
   // --- fotos
   const photosEl = document.getElementById("photos");
@@ -881,111 +895,6 @@ async function viewCatalogs() {
   }));
 }
 
-// ================================================================= VENTAS
-
-const salesState = { q: "", year: "" };
-
-async function viewSales() {
-  const ventasSec = sectionById("ventas");
-  if (!ventasSec) {
-    app.innerHTML = `<div class="card empty"><h2>No hay sección de ventas</h2>
-      <p class="muted">Añade una sección con id "ventas" en config/campos.json.</p></div>`;
-    return;
-  }
-  const items = await api("GET", "/api/impresiones");
-  const F = Object.fromEntries(ventasSec.campos.map((f) => [f.id, f]));
-  const money = { tipo: "moneda" };
-  const signed = { tipo: "moneda", signo: true };
-
-  const sales = [];
-  for (const it of items) {
-    const tot = computeTotals(it);
-    asArray(it.ventas).forEach((v, i) => {
-      const cantidad = Number(v.cantidad) || 0;
-      const importe = F.importe ? fieldValue(F.importe, v) : null;
-      const costeU = tot.costeUnidad ?? null;
-      const coste = costeU !== null ? costeU * cantidad : null;
-      sales.push({ it, v, i, cantidad, importe, costeU, coste,
-        beneficio: importe !== null ? importe - (coste || 0) : null });
-    });
-  }
-  sales.sort((a, b) => (b.v.fecha || "").localeCompare(a.v.fecha || ""));
-  const years = [...new Set(sales.map((s) => (s.v.fecha || "").slice(0, 4)).filter(Boolean))].sort().reverse();
-
-  app.innerHTML = `
-    <div class="page-head">
-      <div><h1>Ventas</h1><p class="muted" style="margin:4px 0 0">${sales.length} venta(s) registradas</p></div>
-    </div>
-    ${sales.length ? `
-      <div class="stats" id="sales-stats"></div>
-      <div class="toolbar">
-        <input type="search" id="q" placeholder="Buscar por objeto, canal, cliente…" value="${esc(salesState.q)}">
-        <select id="year" style="width:auto"><option value="">Todos los años</option>
-          ${years.map((y) => `<option ${y === salesState.year ? "selected" : ""}>${y}</option>`).join("")}</select>
-      </div>
-      <div class="card table-wrap"><table>
-        <thead><tr>
-          <th>Fecha</th><th>Objeto</th><th class="num">Uds.</th><th class="num">Precio / ud.</th>
-          <th class="num">Importe</th><th class="num">Coste / ud.</th><th class="num">Beneficio</th>
-          <th>Canal</th><th>Cliente</th>
-        </tr></thead>
-        <tbody id="rows"></tbody><tfoot id="foot"></tfoot>
-      </table></div>
-      <p class="muted" style="font-size:.85rem">El beneficio de cada venta es el importe menos el coste por unidad de esa impresión × unidades vendidas.
-        Para registrar una venta, abre la impresión y pulsa <strong>+ Venta</strong>.</p>` : `
-      <div class="card empty">
-        <h2>Todavía no hay ventas</h2>
-        <p class="muted">Abre una impresión y pulsa <strong>+ Venta</strong> para registrar la primera.</p>
-        <a class="btn" href="#/">Ir al listado</a>
-      </div>`}
-  `;
-  if (!sales.length) return;
-
-  const render = () => {
-    const q = salesState.q.trim().toLowerCase();
-    const visible = sales.filter((s) =>
-      (!salesState.year || (s.v.fecha || "").startsWith(salesState.year)) &&
-      (!q || `${printName(s.it)} ${s.v.canal || ""} ${s.v.cliente || ""} ${s.v.notas || ""}`.toLowerCase().includes(q)));
-    const sum = (k) => visible.reduce((a, s) => a + (s[k] || 0), 0);
-    const ingresos = sum("importe"), beneficio = sum("beneficio");
-
-    document.getElementById("sales-stats").innerHTML = statTiles([
-      { id: "n", etiqueta: "Ventas", tipo: "numero" },
-      { id: "uds", etiqueta: "Unidades vendidas", tipo: "numero" },
-      { id: "ing", etiqueta: "Ingresos", tipo: "moneda" },
-      { id: "ben", etiqueta: "Beneficio", tipo: "moneda", signo: true },
-      { id: "mar", etiqueta: "Margen", tipo: "porcentaje", signo: true },
-    ], { n: visible.length, uds: sum("cantidad"), ing: ingresos, ben: beneficio,
-      mar: ingresos ? (beneficio / ingresos) * 100 : null });
-
-    document.getElementById("rows").innerHTML = visible.map((s) => `
-      <tr class="clickable" data-id="${esc(s.it.id)}">
-        <td>${esc(fmtDate(s.v.fecha))}</td>
-        <td class="name-cell">${esc(printName(s.it))}</td>
-        <td class="num">${esc(numFmt.format(s.cantidad))}</td>
-        <td class="num">${fmtValueHtml(money, s.v.precioUnidad)}</td>
-        <td class="num">${fmtValueHtml(money, s.importe)}</td>
-        <td class="num">${fmtValueHtml(money, s.costeU)}</td>
-        <td class="num">${fmtValueHtml(signed, s.beneficio)}</td>
-        <td>${esc(s.v.canal || "")}</td>
-        <td>${esc(s.v.cliente || "")}</td>
-      </tr>`).join("") ||
-      `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Sin resultados</td></tr>`;
-    document.getElementById("foot").innerHTML = visible.length > 1 ? `<tr>
-      <td colspan="2">Total (${visible.length})</td><td class="num">${esc(numFmt.format(sum("cantidad")))}</td><td></td>
-      <td class="num">${fmtValueHtml(money, ingresos)}</td><td></td>
-      <td class="num">${fmtValueHtml(signed, beneficio)}</td><td colspan="2"></td></tr>` : "";
-  };
-  render();
-
-  document.getElementById("q").addEventListener("input", (e) => { salesState.q = e.target.value; render(); });
-  document.getElementById("year").addEventListener("change", (e) => { salesState.year = e.target.value; render(); });
-  document.getElementById("rows").addEventListener("click", (e) => {
-    const tr = e.target.closest("tr[data-id]");
-    if (tr) location.hash = `#/i/${tr.dataset.id}`;
-  });
-}
-
 // ======================================================= REGISTROS (GASTOS)
 
 const regState = {}; // filtros por registro: { q, year, group }
@@ -1007,188 +916,7 @@ function linkCell(value, abrirAttrs) {
   return `<a href="${esc(url)}" target="_blank" rel="noopener" title="${esc(value)}">${esc(host)} ↗</a>`;
 }
 
-async function viewRegister(def) {
-  await loadCatalogs();
-  let list = await api("GET", `/api/registros/${def.id}`);
-  const st = (regState[def.id] ??= { q: "", year: "", group: "" });
-  const amountField = def.campos.find((f) => f.total) || def.campos.find((f) => f.tipo === "moneda");
-  const groupField = def.campos.find((f) => f.id === def.agruparPor);
-  const dateField = def.campos.find((f) => f.tipo === "fecha");
-  const cols = def.campos.filter((f) => f.enListado);
-  const elem = (def.elemento || "elemento").toLowerCase();
-  let editing = null; // { draft, isNew }
-
-  app.innerHTML = `
-    <div class="page-head">
-      <div><h1>${esc(def.titulo)}</h1>
-        ${def.descripcion ? `<p class="muted" style="margin:4px 0 0">${esc(def.descripcion)}</p>` : ""}</div>
-      <div class="actions"><button class="btn btn-primary" id="new">+ Nuevo ${esc(elem)}</button></div>
-    </div>
-    <div id="editor"></div>
-    <div id="reg-content"></div>
-  `;
-
-  const filtered = () => {
-    const q = st.q.trim().toLowerCase();
-    return list.filter((it) =>
-      (!st.year || (it[dateField?.id] || "").startsWith(st.year)) &&
-      (!st.group || it[groupField?.id] === st.group) &&
-      (!q || JSON.stringify(it).toLowerCase().includes(q)));
-  };
-
-  // --- listado
-  const render = () => {
-    const content = document.getElementById("reg-content");
-    if (!list.length) {
-      content.innerHTML = `<div class="card empty"><h2>Todavía no hay ${esc(def.titulo.toLowerCase())}</h2>
-        <p class="muted">Pulsa <strong>+ Nuevo ${esc(elem)}</strong> para registrar el primero.</p></div>`;
-      return;
-    }
-    const years = dateField ? [...new Set(list.map((it) => (it[dateField.id] || "").slice(0, 4)).filter(Boolean))].sort().reverse() : [];
-    const groups = groupField ? [...new Set([
-      ...(CATALOGS[groupField.catalogo] || []).map((c) => c.nombre),
-      ...list.map((it) => it[groupField.id]).filter(Boolean)])] : [];
-
-    const rows = filtered().sort((a, b) =>
-      (b[dateField?.id] || "").localeCompare(a[dateField?.id] || "") || (b.creado || "").localeCompare(a.creado || ""));
-    const amount = (it) => Number(it[amountField?.id]) || 0;
-    const total = rows.reduce((s, it) => s + amount(it), 0);
-    const thisYear = String(new Date().getFullYear());
-    const yearTotal = dateField ? rows.filter((it) => (it[dateField.id] || "").startsWith(thisYear)).reduce((s, it) => s + amount(it), 0) : null;
-
-    // Desglose por tipo
-    const byGroup = {};
-    if (groupField) for (const it of rows) {
-      const g = it[groupField.id] || "Sin tipo";
-      byGroup[g] = (byGroup[g] || 0) + amount(it);
-    }
-    const groupEntries = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
-    const max = Math.max(...groupEntries.map((e) => e[1]), 0);
-
-    content.innerHTML = `
-      <div class="stats">${statTiles([
-        { id: "total", etiqueta: `Total${st.year ? " " + st.year : ""}`, tipo: "moneda" },
-        { id: "n", etiqueta: "Compras", tipo: "numero" },
-        ...(dateField && !st.year ? [{ id: "year", etiqueta: `Este año (${thisYear})`, tipo: "moneda" }] : []),
-      ], { total, n: rows.length, year: yearTotal })}</div>
-
-      ${groupEntries.length ? `<div class="card card-pad section" style="margin-top:0;margin-bottom:20px">
-        <h2>Por ${esc(groupField.etiqueta.toLowerCase())}</h2>
-        <div class="bars">${groupEntries.map(([g, v]) => `
-          <button class="bar-row ${st.group === g ? "active" : ""}" data-group="${esc(g)}" title="Filtrar por ${esc(g)}">
-            <span class="bar-label">${esc(g)}</span>
-            <span class="bar-track"><span class="bar-fill" style="width:${max ? (v / max) * 100 : 0}%"></span></span>
-            <span class="bar-value">${esc(fmtValue(amountField, v))}
-              <span class="muted">${total ? numFmt.format((v / total) * 100) : 0} %</span></span>
-          </button>`).join("")}</div>
-      </div>` : ""}
-
-      <div class="toolbar">
-        <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}">
-        ${groupField ? `<select id="group" style="width:auto"><option value="">Todos los tipos</option>
-          ${groups.map((g) => `<option ${g === st.group ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>` : ""}
-        ${years.length ? `<select id="year" style="width:auto"><option value="">Todos los años</option>
-          ${years.map((y) => `<option ${y === st.year ? "selected" : ""}>${y}</option>`).join("")}</select>` : ""}
-      </div>
-
-      <div class="card table-wrap"><table>
-        <thead><tr>${cols.map((f) => `<th class="${NUMERIC.includes(f.tipo) ? "num" : ""}">${esc(f.etiqueta)}</th>`).join("")}<th></th></tr></thead>
-        <tbody>${rows.map((it) => `<tr class="clickable" data-id="${esc(it.id)}">${cols.map((f) => {
-          if (f.tipo === "enlace") return `<td>${linkCell(it[f.id], `data-abrir="${esc(f.id)}" data-item="${esc(it.id)}"`)}</td>`;
-          if (f.id === "nombre") return `<td><span class="name-cell">${esc(it.nombre)}</span>
-            ${it.descripcion ? `<div class="muted cell-desc">${esc(it.descripcion)}</div>` : ""}</td>`;
-          return `<td class="${NUMERIC.includes(f.tipo) ? "num" : ""}">${fmtValueHtml(f, it[f.id])}</td>`;
-        }).join("")}<td class="num"><button class="btn btn-sm btn-ghost" data-edit="${esc(it.id)}">Editar</button></td></tr>`).join("") ||
-          `<tr><td colspan="${cols.length + 1}" class="muted" style="text-align:center;padding:24px">Sin resultados</td></tr>`}
-        </tbody>
-        ${rows.length > 1 ? `<tfoot><tr>${cols.map((f, i) =>
-          `<td class="${NUMERIC.includes(f.tipo) ? "num" : ""}">${i === 0 ? `Total (${rows.length})` : f === amountField ? esc(fmtValue(f, total)) : ""}</td>`).join("")}<td></td></tr></tfoot>` : ""}
-      </table></div>
-    `;
-
-    content.querySelector("#q").addEventListener("input", (e) => {
-      st.q = e.target.value;
-      const pos = e.target.selectionStart;
-      render();
-      const q = document.getElementById("q"); q.focus(); q.setSelectionRange(pos, pos);
-    });
-    content.querySelector("#year")?.addEventListener("change", (e) => { st.year = e.target.value; render(); });
-    content.querySelector("#group")?.addEventListener("change", (e) => { st.group = e.target.value; render(); });
-    content.querySelectorAll("[data-group]").forEach((b) => b.addEventListener("click", () => {
-      st.group = st.group === b.dataset.group ? "" : b.dataset.group; render();
-    }));
-    content.querySelector("tbody").addEventListener("click", async (e) => {
-      const open = e.target.closest("[data-abrir]");
-      if (open) {
-        try {
-          await api("POST", `/api/registros/${def.id}/${encodeURIComponent(open.dataset.item)}/abrir`,
-            { campo: open.dataset.abrir, carpeta: !!open.dataset.carpeta });
-          toast(open.dataset.carpeta ? "Abriendo la carpeta…" : "Abriendo…");
-        } catch (err) { toast(err.message, true); }
-        return;
-      }
-      if (e.target.closest("a")) return;
-      const tr = e.target.closest("tr[data-id]");
-      if (tr) openEditor(list.find((it) => it.id === tr.dataset.id));
-    });
-  };
-
-  // --- editor (alta / modificación)
-  const openEditor = (item) => {
-    if (editing && formDirty && !confirm("Hay cambios sin guardar. ¿Descartarlos?")) return;
-    const isNew = !item;
-    const draft = isNew ? { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}` } : clone(item);
-    if (isNew) for (const f of def.campos) { const v = defaultValue(f); if (!isEmpty(v)) draft[f.id] = v; }
-    editing = { draft, isNew };
-    formDirty = false;
-
-    const box = document.getElementById("editor");
-    box.innerHTML = `
-      <form class="card card-pad section editor-card" id="reg-form" novalidate style="margin-top:0;margin-bottom:20px">
-        <h2>${isNew ? `Nuevo ${esc(elem)}` : `Editar ${esc(elem)}`}</h2>
-        <div class="form-grid" style="margin-top:12px">${def.campos.map((f) => fieldBlock(f, draft[f.id], `e.${f.id}`)).join("")}</div>
-        <div class="editor-actions">
-          ${isNew ? "" : `<button type="button" class="btn btn-danger" id="reg-del">Eliminar</button>`}
-          <span style="flex:1"></span>
-          <button type="button" class="btn" id="reg-cancel">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar</button>
-        </div>
-      </form>`;
-    const form = document.getElementById("reg-form");
-    bindInputs(form, { e: draft });
-    form.scrollIntoView({ block: "start", behavior: "smooth" });
-    form.querySelector("input:not([type=checkbox]), select")?.focus({ preventScroll: true });
-
-    const close = () => { editing = null; formDirty = false; box.innerHTML = ""; };
-    const persist = async (next, msg) => {
-      list = await api("PUT", `/api/registros/${def.id}`, next);
-      close(); render(); toast(msg);
-    };
-
-    document.getElementById("reg-cancel").onclick = () => {
-      if (formDirty && !confirm("Hay cambios sin guardar. ¿Descartarlos?")) return;
-      close();
-    };
-    document.getElementById("reg-del")?.addEventListener("click", async () => {
-      if (!confirm(`¿Eliminar "${item.nombre || elem}"?\n\nSe guarda una copia de seguridad en data/papelera.`)) return;
-      try { await persist(list.filter((it) => it.id !== item.id), `${def.elemento || "Elemento"} eliminado`); }
-      catch (err) { toast(err.message, true); }
-    });
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const missing = def.campos.filter((f) => f.obligatorio && isEmpty(draft[f.id])).map((f) => `e.${f.id}`);
-      if (!checkRequired(missing)) return;
-      const now = new Date().toISOString().slice(0, 19);
-      const saved = { ...draft, modificado: now, creado: draft.creado || now };
-      const next = isNew ? [...list, saved] : list.map((it) => (it.id === saved.id ? saved : it));
-      try { await persist(next, `${def.elemento || "Elemento"} guardado`); }
-      catch (err) { toast(err.message, true); }
-    });
-  };
-
-  document.getElementById("new").onclick = () => openEditor(null);
-  render();
-}
+// viewRegister() está en registros.js
 
 // ============================================================ VISOR FOTOS
 
@@ -1246,13 +974,12 @@ async function router() {
     if (route === "nueva") await viewForm(null);
     else if (route === "editar" && param) await viewForm(decodeURIComponent(param));
     else if (route === "i" && param) await viewDetail(decodeURIComponent(param));
-    else if (route === "ventas") await viewSales();
     else if (route === "catalogos") await viewCatalogs();
     else if (route === "informes") await viewReports(param);
     else if ((CONFIG.registros || []).some((r) => r.id === route)) {
-      await viewRegister(CONFIG.registros.find((r) => r.id === route));
+      await viewRegister(CONFIG.registros.find((r) => r.id === route), hash.split("?")[1] || "");
     } else await viewList();
-    if (!hash.includes("?venta")) window.scrollTo(0, 0);
+    window.scrollTo(0, 0);
   } catch (err) {
     app.innerHTML = `<div class="card empty"><h2>Algo ha fallado</h2><p class="muted">${esc(err.message)}</p>
       <a class="btn" href="#/">Volver al listado</a></div>`;

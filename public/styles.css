@@ -352,3 +352,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   .page-head { border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-bottom: 14px; }
   .bar-row { grid-template-columns: 130px 1fr auto; }
 }
+
+/* filtro fijo en registros (p. ej. ventas de una impresión) */
+.filter-chip { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 6px 12px;
+  border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--accent); font-size: .9rem; }
+.filter-chip a { text-decoration: none; font-weight: 600; }

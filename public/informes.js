@@ -159,17 +159,16 @@ async function loadReportData() {
   items.forEach((it) => (it._tot = computeTotals(it)));
   const gastosDef = (CONFIG.registros || []).find((r) => r.id === "gastos");
   const gastos = gastosDef ? await api("GET", "/api/registros/gastos") : [];
-  const ventasSec = sectionById("ventas");
-  const importeF = ventasSec?.campos.find((f) => f.id === "importe");
-  const ventas = [];
-  for (const it of items) {
-    for (const v of asArray(it.ventas)) {
-      const cantidad = Number(v.cantidad) || 0;
-      const importe = Number(importeF ? fieldValue(importeF, v) : 0) || 0;
-      const costeU = it._tot.costeUnidad ?? null;
-      ventas.push({ it, v, cantidad, importe, costeU, coste: costeU !== null ? costeU * cantidad : 0 });
-    }
-  }
+  // Ventas: registro propio; cada venta apunta a una impresión y guarda su coste por unidad.
+  const ventasDef = (CONFIG.registros || []).find((r) => r.id === "ventas");
+  const byId = Object.fromEntries(items.map((it) => [it.id, it]));
+  const ventas = (ventasDef ? await api("GET", "/api/registros/ventas") : []).map((v) => {
+    const it = byId[v.impresion] || { id: v.impresion, general: { nombre: `${v.impresion || "?"} (eliminada)` }, _tot: {} };
+    const cantidad = Number(v.cantidad) || 0;
+    const costeU = !isEmpty(v.costeUnidad) ? Number(v.costeUnidad) : (it._tot.costeUnidad ?? null);
+    return { it, v, cantidad, importe: cantidad * (Number(v.precioUnidad) || 0), costeU,
+      coste: costeU !== null ? costeU * cantidad : 0 };
+  });
   return { items, gastos, ventas };
 }
 
@@ -191,14 +190,11 @@ function timeSeries(list, dateFn, valFn) {
 
 // ============================================================== INFORMES
 
-function reportResumen({ items, gastos, ventas }, charts) {
+function reportResumen({ items, gastos }, charts) {
   const g = gastos.filter((x) => inPeriod(x.fecha));
   const its = items.filter((x) => inPeriod(x.general?.fecha));
-  const vs = ventas.filter((x) => inPeriod(x.v.fecha));
   const inversion = g.reduce((s, x) => s + (Number(x.precio) || 0), 0);
   const t = (k) => its.reduce((s, x) => s + (x._tot[k] || 0), 0);
-  const ingresos = vs.reduce((s, x) => s + x.importe, 0);
-  const beneficio = vs.reduce((s, x) => s + x.importe - x.coste, 0);
 
   charts.gastosTiempo = barChart(timeSeries(g, (x) => x.fecha, (x) => Number(x.precio) || 0));
   if (!reportState.year && g.length) charts.acumulado = lineChart(cumulative(g));
@@ -214,8 +210,7 @@ function reportResumen({ items, gastos, ventas }, charts) {
       { label: "Horas de impresión", value: hours(t("tiempoImpresion")) },
       { label: "Filamento usado", value: grams(t("gramosTotal")), sub: `${pct(t("gramosTotal") ? (t("gramosDesperdicio") / t("gramosTotal")) * 100 : null)} desperdicio` },
       { label: "Coste de producción", value: money(t("coste")) },
-      { label: "Ingresos por ventas", value: money(ingresos), sub: vs.length ? `${vs.length} ventas` : "Sin ventas" },
-      ...(vs.length ? [{ label: "Beneficio de lo vendido", value: money(beneficio), cls: beneficio >= 0 ? "pos" : "neg" }] : []),
+      { label: "Horas de pintura", value: hours(t("tiempoPintura")) },
     ])}
     <div class="report-grid">
       ${chartBox("gastosTiempo", reportState.year ? `Inversión por mes (${reportState.year})` : "Inversión por año")}
@@ -381,7 +376,7 @@ function reportVentas({ items, ventas }, charts) {
   const vs = ventas.filter((x) => inPeriod(x.v.fecha));
   if (!vs.length) {
     return `<div class="card empty"><h2>Todavía no hay ventas${reportState.year ? ` en ${reportState.year}` : ""}</h2>
-      <p class="muted">Cuando registres ventas (botón <strong>+ Venta</strong> en cada impresión) aquí verás ingresos,
+      <p class="muted">Cuando registres ventas (pestaña <strong>Ventas</strong> del menú) aquí verás ingresos,
       beneficio, margen, ventas por mes y por canal, y la rentabilidad de cada impresión.</p></div>`;
   }
   const ingresos = vs.reduce((s, x) => s + x.importe, 0);
