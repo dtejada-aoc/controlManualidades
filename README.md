@@ -76,3 +76,7 @@ Para arrancar en otro puerto: `python app.py --port 8800`.
 
 Recarga la página después de editar la configuración. Si quitas un campo, los datos antiguos no se pierden:
 aparecen como "campo antiguo" en la ficha.
+
+## Licencia
+
+[MIT](LICENSE)
