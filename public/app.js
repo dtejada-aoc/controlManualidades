@@ -1007,39 +1007,112 @@ async function viewCatalogs() {
     <div id="cat-root">${defs.map((c) => `
       <div class="card card-pad section" data-cat="${esc(c.id)}">
         <div class="repeat-head"><h2>${esc(c.titulo)}</h2>
-          <button class="btn btn-primary btn-sm" data-save="${esc(c.id)}">Guardar ${esc(c.titulo.toLowerCase())}</button></div>
+          <div class="btns">
+            <button class="btn btn-sm" data-sort="${esc(c.id)}" title="Ordenar alfabéticamente por nombre">Ordenar A→Z</button>
+            <button class="btn btn-primary btn-sm" data-save="${esc(c.id)}">Guardar ${esc(c.titulo.toLowerCase())}</button>
+          </div></div>
+        <p class="muted small cat-hint">El orden de esta lista es el de los desplegables. Arrastra ⠿ o usa ↑ ↓ para cambiarlo.</p>
         <div class="cat-body"></div>
       </div>`).join("")}</div>
   `;
+
+  // Marca el catálogo como pendiente de guardar (resalta su botón)
+  const changed = (c) => {
+    formDirty = true;
+    const pending = JSON.stringify(drafts[c.id]) !== JSON.stringify(CATALOGS[c.id] || []);
+    app.querySelector(`[data-save="${c.id}"]`).classList.toggle("pending", pending);
+  };
+  const move = (c, from, to) => {
+    const rows = drafts[c.id];
+    if (to < 0 || to >= rows.length || from === to) return;
+    rows.splice(to, 0, rows.splice(from, 1)[0]);
+    changed(c);
+    render(c);
+  };
 
   const render = (c) => {
     const rows = drafts[c.id];
     const body = app.querySelector(`[data-cat="${c.id}"] .cat-body`);
     body.innerHTML = `
       ${rows.length ? `<div class="table-wrap"><table class="edit-table">
-        <thead><tr>${c.campos.map((f) => `<th>${esc(f.etiqueta)}${f.obligatorio ? ' <span class="req">*</span>' : ""}</th>`).join("")}<th></th></tr></thead>
-        <tbody>${rows.map((r, i) => `<tr>${c.campos.map((f) =>
+        <thead><tr><th class="order-col"></th>${c.campos.map((f) => `<th>${esc(f.etiqueta)}${f.obligatorio ? ' <span class="req">*</span>' : ""}</th>`).join("")}<th></th></tr></thead>
+        <tbody>${rows.map((r, i) => `<tr data-i="${i}">
+          <td class="order-col"><span class="order-btns">
+            <span class="drag" data-drag="${i}" title="Arrastrar para mover" aria-hidden="true">⠿</span>
+            <button type="button" class="btn btn-sm btn-ghost" data-move="-1" data-i="${i}" title="Subir" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-move="1" data-i="${i}" title="Bajar" ${i === rows.length - 1 ? "disabled" : ""}>↓</button>
+          </span></td>
+          ${c.campos.map((f) =>
           `<td class="${f.tipo === "booleano" ? "center" : ""}">${fieldInput(f, r[f.id], `${c.id}.${i}.${f.id}`)}</td>`).join("")}
           <td><button type="button" class="btn btn-sm btn-ghost btn-danger" data-rm="${i}" title="Quitar">×</button></td></tr>`).join("")}
         </tbody></table></div>` : `<p class="muted">Sin elementos todavía.</p>`}
       <button type="button" class="btn" data-add style="margin-top:10px">+ Añadir ${esc((c.elemento || "elemento").toLowerCase())}</button>
     `;
     body.querySelector("[data-add]").onclick = () => {
-      rows.push({}); formDirty = true; render(c);
+      rows.push({}); changed(c); render(c);
       body.querySelector("tbody tr:last-child input")?.focus();
     };
     body.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => {
       const i = Number(b.dataset.rm);
       if (!rowIsBlank(c.campos, rows[i]) && !confirm(`¿Quitar "${rows[i].nombre || "elemento"}" del catálogo?\n\nLas impresiones que ya lo usan conservan su nombre y precio.`)) return;
-      rows.splice(i, 1); formDirty = true; render(c);
+      rows.splice(i, 1); changed(c); render(c);
     }));
+    body.querySelectorAll("[data-move]").forEach((b) => (b.onclick = () => {
+      const i = Number(b.dataset.i);
+      move(c, i, i + Number(b.dataset.move));
+      body.querySelector(`tr[data-i="${i + Number(b.dataset.move)}"] [data-move="${b.dataset.move}"]:not(:disabled)`)?.focus();
+    }));
+
+    // Arrastrar y soltar: la fila solo se puede arrastrar desde el asa ⠿
+    let dragFrom = null;
+    body.querySelectorAll("tbody tr").forEach((tr) => {
+      const handle = tr.querySelector("[data-drag]");
+      handle.addEventListener("mousedown", () => (tr.draggable = true));
+      handle.addEventListener("mouseup", () => (tr.draggable = false)); // clic sin arrastrar
+      tr.addEventListener("dragstart", (e) => {
+        dragFrom = Number(tr.dataset.i);
+        tr.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(dragFrom));
+      });
+      tr.addEventListener("dragend", () => {
+        tr.draggable = false;
+        tr.classList.remove("dragging");
+        body.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+      });
+      tr.addEventListener("dragover", (e) => {
+        if (dragFrom === null) return;
+        e.preventDefault();
+        const after = e.offsetY > tr.offsetHeight / 2;
+        body.querySelectorAll(".drop-before, .drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+        tr.classList.add(after ? "drop-after" : "drop-before");
+      });
+      tr.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (dragFrom === null) return;
+        const target = Number(tr.dataset.i);
+        let to = tr.classList.contains("drop-after") ? target + 1 : target;
+        if (dragFrom < to) to--;
+        const from = dragFrom;
+        dragFrom = null;
+        move(c, from, to);
+      });
+    });
   };
   defs.forEach(render);
+
+  app.querySelectorAll("[data-sort]").forEach((btn) => btn.addEventListener("click", () => {
+    const c = defs.find((d) => d.id === btn.dataset.sort);
+    drafts[c.id].sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { sensitivity: "base" }));
+    changed(c);
+    render(c);
+  }));
 
   bindInputs(document.getElementById("cat-root"), drafts, (holder) => {
     const [cid, i, fid] = holder.dataset.path.split(".");
     const c = defs.find((d) => d.id === cid);
     const field = c?.campos.find((f) => f.id === fid);
+    if (c) changed(c);
     if (field?.unico && holder.checked) {
       drafts[cid].forEach((r, j) => { if (j !== Number(i)) delete r[fid]; });
       render(c);
@@ -1061,6 +1134,7 @@ async function viewCatalogs() {
       drafts[c.id] = await api("PUT", `/api/catalogos/${c.id}`, rows.filter((r) => !rowIsBlank(c.campos, r)));
       CATALOGS[c.id] = clone(drafts[c.id]);
       formDirty = defs.some((d) => JSON.stringify(drafts[d.id]) !== JSON.stringify(CATALOGS[d.id]));
+      btn.classList.remove("pending");
       render(c);
       toast(`${c.titulo} guardados`);
     } catch (err) {

@@ -382,3 +382,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 }
 @media print { .sublist li { white-space: normal; } }
 .color-input input[type=text] { width: 110px; font-family: ui-monospace, Consolas, monospace; text-transform: uppercase; }
+
+/* catálogos: cambiar el orden */
+.cat-hint { margin: -4px 0 10px; }
+.edit-table .order-col { width: 1%; white-space: nowrap; padding-right: 0; }
+.order-btns { display: inline-flex; align-items: center; gap: 0; }
+.order-btns .btn { padding: 2px 7px; }
+.order-btns .btn:disabled { opacity: .25; cursor: default; }
+.drag { cursor: grab; color: var(--muted); padding: 4px 6px; font-size: 1.1rem; user-select: none; }
+.drag:active { cursor: grabbing; }
+.edit-table tr.dragging { opacity: .4; }
+.edit-table tr.drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+.edit-table tr.drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+.btn.pending { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn.pending::after { content: " •"; }
+.order-btns .btn { font-size: 1rem; line-height: 1.2; }
