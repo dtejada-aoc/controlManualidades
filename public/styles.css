@@ -357,3 +357,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .filter-chip { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 6px 12px;
   border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--accent); font-size: .9rem; }
 .filter-chip a { text-decoration: none; font-weight: 600; }
+
+/* muestras de color (filamentos) */
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.nowrap { white-space: nowrap; }
+.color-input { display: flex; align-items: center; gap: 10px; }
+.color-input input[type=color] { width: 52px; height: 38px; padding: 3px; cursor: pointer; }

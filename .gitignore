@@ -16,3 +16,6 @@ desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# Copias comprimidas del proyecto (pueden incluir data/)
+*.zip

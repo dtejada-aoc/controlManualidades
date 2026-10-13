@@ -25,6 +25,7 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 ## Pantallas
 
 - **Impresiones**: listado con totales; cada ficha muestra producción y filamento.
+- **Filamentos**: bobinas con nombre, marca, tipo, color (con muestra opcional) y precio por kg.
 - **Gastos**: compras de material de apoyo (bobinas, recambios, limpieza…) con desglose por tipo y año.
   Es solo control del gasto: no se resta de los beneficios de las impresiones (el filamento ya se cuenta en el coste de cada placa).
 - **Ventas**: registro aparte (no se mezcla con las impresiones). Cada venta indica la impresión vendida,
@@ -32,7 +33,8 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 - **Informes**: resumen general, gastos, producción y ventas, con filtro por año y botón
   **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
   Cada impresión también tiene botón **PDF** para exportar su ficha.
-- **Catálogos**: impresoras (una marcada por defecto), accesorios con su precio por unidad y tipos de gasto.
+- **Catálogos**: impresoras (una marcada por defecto), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
+  (también se usan en el campo Material de cada impresión).
 
 ## Cómo se calcula
 
@@ -48,6 +50,7 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 data/impresiones/<id>/datos.json   ← datos de la impresión
 data/impresiones/<id>/fotos/       ← fotos
 data/catalogos/*.json              ← impresoras, accesorios y tipos de gasto
+data/registros/filamentos.json     ← filamentos
 data/registros/gastos.json         ← gastos
 data/registros/ventas.json         ← ventas
 data/papelera/                     ← lo que eliminas desde la app (recuperable)
@@ -61,7 +64,7 @@ tus datos nunca se suben al repositorio.
 - `secciones`: bloques del formulario. Con `"repetible": true` se pueden añadir varios elementos (placas, accesorios…).
 - `campos`: cada campo tiene `id`, `etiqueta` y `tipo`:
   `texto`, `textoLargo`, `numero` (con `unidad` opcional), `moneda`, `duracion` (se guarda en minutos),
-  `fecha`, `seleccion` (con `opciones`), `booleano`, `enlace`.
+  `fecha`, `seleccion` (con `opciones`), `booleano`, `enlace`, `color`, `impresion`.
 - Opciones extra: `obligatorio`, `ayuda`, `porDefecto`, `enListado` (columna en el listado).
 - Tipo `catalogo` (con `"catalogo": "accesorios"`): desplegable con los elementos del catálogo;
   `rellena` copia datos del elemento elegido a la fila (ej. el precio).

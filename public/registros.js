@@ -13,7 +13,10 @@ async function viewRegister(def, params = "") {
   let list = await api("GET", `/api/registros/${def.id}`);
   const st = (regState[def.id] ??= { q: "", year: "", group: "" });
   const val = (f, it) => fieldValue(f, it);
-  const amountField = def.campos.find((f) => f.total) || def.campos.find((f) => f.tipo === "moneda");
+  const amountField = def.campos.find((f) => f.total);
+  // Desglose: suma del importe (por defecto) o número de elementos ("desglose": "contar")
+  const byCount = def.desglose === "contar" || !amountField;
+  const countFmt = { tipo: "numero" };
   const groupField = def.campos.find((f) => f.id === def.agruparPor);
   const dateField = def.campos.find((f) => f.tipo === "fecha");
   const printField = def.campos.find((f) => f.tipo === "impresion");
@@ -73,12 +76,16 @@ async function viewRegister(def, params = "") {
       };
     }
     const values = {};
+    const nums = (id) => {
+      const f = def.campos.find((x) => x.id === id);
+      return rows.map((it) => (f ? val(f, it) : it[id])).filter((v) => !isEmpty(v)).map(Number);
+    };
     for (const r of def.resumen) {
       if (r.contar) values[r.id] = rows.length;
-      else if (r.suma) {
-        const f = def.campos.find((x) => x.id === r.suma);
-        values[r.id] = rows.reduce((s, it) => s + (Number(f ? val(f, it) : it[r.suma]) || 0), 0);
-      }
+      else if (r.suma) values[r.id] = nums(r.suma).reduce((s, v) => s + v, 0);
+      else if (r.media && nums(r.media).length) values[r.id] = nums(r.media).reduce((s, v) => s + v, 0) / nums(r.media).length;
+      else if (r.minimo && nums(r.minimo).length) values[r.id] = Math.min(...nums(r.minimo));
+      else if (r.maximo && nums(r.maximo).length) values[r.id] = Math.max(...nums(r.maximo));
     }
     for (const r of def.resumen.filter((x) => x.formula)) {
       const v = evalFormula(r.formula, (k) => values[k]);
@@ -100,9 +107,13 @@ async function viewRegister(def, params = "") {
       ...(groupField.tipo === "catalogo" ? (CATALOGS[groupField.catalogo] || []).map((c) => c.nombre) : asArray(groupField.opciones)),
       ...list.map((it) => it[groupField.id]).filter(Boolean)])] : [];
 
-    const rows = filtered().sort((a, b) =>
-      (b[dateField?.id] || "").localeCompare(a[dateField?.id] || "") || (b.creado || "").localeCompare(a.creado || ""));
-    const amount = (it) => Number(val(amountField, it)) || 0;
+    const rows = filtered().sort(def.ordenarPor
+      // Orden alfabético por los campos indicados (p. ej. tipo, marca, nombre)
+      ? (a, b) => asArray(def.ordenarPor).reduce((r, k) => r || String(a[k] ?? "").localeCompare(String(b[k] ?? ""), "es"), 0)
+      // Por defecto: lo más reciente primero
+      : (a, b) => (b[dateField?.id] || "").localeCompare(a[dateField?.id] || "") || (b.creado || "").localeCompare(a.creado || ""));
+    const amount = (it) => (byCount ? 1 : Number(val(amountField, it)) || 0);
+    const barFmt = byCount ? countFmt : amountField;
     const total = rows.reduce((s, it) => s + amount(it), 0);
     const sum = summary(rows);
     const colSum = (f) => rows.reduce((s, it) => s + (Number(val(f, it)) || 0), 0);
@@ -125,7 +136,7 @@ async function viewRegister(def, params = "") {
           <button class="bar-row ${st.group === g ? "active" : ""}" data-group="${esc(g)}" title="Filtrar por ${esc(g)}">
             <span class="bar-label">${esc(g)}</span>
             <span class="bar-track"><span class="bar-fill" style="width:${max ? (v / max) * 100 : 0}%"></span></span>
-            <span class="bar-value">${esc(fmtValue(amountField, v))}
+            <span class="bar-value">${esc(fmtValue(barFmt, v))}
               <span class="muted">${total ? numFmt.format((v / total) * 100) : 0} %</span></span>
           </button>`).join("")}</div>
       </div>` : ""}
@@ -144,11 +155,12 @@ async function viewRegister(def, params = "") {
           if (f.tipo === "enlace") return `<td>${linkCell(it[f.id], `data-abrir="${esc(f.id)}" data-item="${esc(it.id)}"`)}</td>`;
           if (f.id === "nombre") return `<td><span class="name-cell">${esc(it.nombre)}</span>
             ${it.descripcion ? `<div class="muted cell-desc">${esc(it.descripcion)}</div>` : ""}</td>`;
+          if (f.muestra) return `<td class="nowrap">${isHexColor(it[f.muestra]) ? swatch(it[f.muestra]) + " " : ""}${fmtValueHtml(f, val(f, it))}</td>`;
           return `<td class="${NUMERIC.includes(f.tipo) ? "num" : ""}">${fmtValueHtml(f, val(f, it))}</td>`;
         }).join("")}<td class="num"><button class="btn btn-sm btn-ghost" data-edit="${esc(it.id)}">Editar</button></td></tr>`).join("") ||
           `<tr><td colspan="${cols.length + 1}" class="muted" style="text-align:center;padding:24px">Sin resultados</td></tr>`}
         </tbody>
-        ${rows.length > 1 ? `<tfoot><tr>${cols.map((f, i) =>
+        ${rows.length > 1 && cols.some((f) => sumFields.has(f.id) || (f.formula && f.signo)) ? `<tfoot><tr>${cols.map((f, i) =>
           `<td class="${NUMERIC.includes(f.tipo) ? "num" : ""}">${i === 0 ? `Total (${rows.length})`
             : sumFields.has(f.id) || (f.formula && f.signo) ? fmtValueHtml(f, colSum(f)) : ""}</td>`).join("")}<td></td></tr></tfoot>` : ""}
       </table></div>
@@ -223,6 +235,7 @@ async function viewRegister(def, params = "") {
         renderFields();
         return;
       }
+      if (f?.tipo === "color") holder.nextElementSibling.textContent = holder.value;
       updateComputed();
     });
     form.scrollIntoView({ block: "start", behavior: "smooth" });

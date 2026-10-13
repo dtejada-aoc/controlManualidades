@@ -42,10 +42,55 @@
         { "nombre": "Postprocesado" },
         { "nombre": "Pintura" }
       ]
+    },
+    {
+      "id": "tiposFilamento",
+      "titulo": "Tipos de filamento",
+      "elemento": "Tipo",
+      "campos": [
+        { "id": "nombre", "etiqueta": "Nombre", "tipo": "texto", "obligatorio": true },
+        { "id": "notas",  "etiqueta": "Notas",  "tipo": "texto" }
+      ],
+      "inicial": [
+        { "nombre": "PLA" },
+        { "nombre": "PETG" },
+        { "nombre": "ABS" },
+        { "nombre": "ASA" },
+        { "nombre": "TPU" },
+        { "nombre": "WOOD" },
+        { "nombre": "Resina" }
+      ]
     }
   ],
 
   "registros": [
+    {
+      "id": "filamentos",
+      "titulo": "Filamentos",
+      "elemento": "Filamento",
+      "descripcion": "Bobinas que usas o tienes. Los tipos se gestionan en Catálogos.",
+      "agruparPor": "tipo",
+      "desglose": "contar",
+      "ordenarPor": ["tipo", "marca", "nombre"],
+      "resumen": [
+        { "id": "n",          "etiqueta": "Filamentos",          "tipo": "numero", "contar": true },
+        { "id": "precioMedio","etiqueta": "Precio medio por kg", "tipo": "moneda", "unidad": "/kg", "media": "precioKg" },
+        { "id": "minimo",     "etiqueta": "Más barato",          "tipo": "moneda", "unidad": "/kg", "minimo": "precioKg" },
+        { "id": "maximo",     "etiqueta": "Más caro",            "tipo": "moneda", "unidad": "/kg", "maximo": "precioKg" }
+      ],
+      "campos": [
+        { "id": "nombre",   "etiqueta": "Nombre",          "tipo": "texto", "obligatorio": true, "enListado": true,
+          "ayuda": "Ej.: PLA Basic, PLA Matte, PETG HF…" },
+        { "id": "marca",    "etiqueta": "Marca",           "tipo": "texto", "enListado": true },
+        { "id": "tipo",     "etiqueta": "Tipo",            "tipo": "catalogo", "catalogo": "tiposFilamento", "obligatorio": true, "enListado": true },
+        { "id": "color",    "etiqueta": "Color",           "tipo": "texto", "enListado": true, "muestra": "colorHex",
+          "ayuda": "Nombre del color, p. ej. Negro mate" },
+        { "id": "colorHex", "etiqueta": "Muestra de color","tipo": "color", "ayuda": "Opcional: se ve junto al nombre del color" },
+        { "id": "precioKg", "etiqueta": "Precio",          "tipo": "moneda", "unidad": "/kg", "obligatorio": true, "enListado": true },
+        { "id": "enlace",   "etiqueta": "Tienda",          "tipo": "enlace", "enListado": true },
+        { "id": "notas",    "etiqueta": "Notas",           "tipo": "textoLargo" }
+      ]
+    },
     {
       "id": "gastos",
       "titulo": "Gastos",
@@ -121,8 +166,7 @@
           "opciones": ["Pendiente", "Imprimiendo", "Impreso", "Pintando", "Terminado", "Fallido"], "enListado": true },
         { "id": "unidades", "etiqueta": "Unidades obtenidas", "tipo": "numero", "porDefecto": 1, "enListado": true,
           "ayuda": "Piezas iguales que salen de esta impresión (para el coste por unidad)" },
-        { "id": "material", "etiqueta": "Material",          "tipo": "seleccion",
-          "opciones": ["PLA", "PETG", "ABS", "ASA", "TPU", "Resina"] },
+        { "id": "material", "etiqueta": "Material",          "tipo": "catalogo", "catalogo": "tiposFilamento" },
         { "id": "impresora","etiqueta": "Impresora",         "tipo": "catalogo", "catalogo": "impresoras" },
         { "id": "enlace",   "etiqueta": "Modelo (web o fichero)", "tipo": "enlace",
           "ayuda": "Una URL o la ruta del fichero .3mf; desde la ficha podrás abrirlo" },

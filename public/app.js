@@ -54,11 +54,14 @@ const isLocalPath = (v) => /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(String(v).trim().r
 /** ¿Parece una dirección web? (si no, p. ej. un nº de pedido, se muestra como texto) */
 const isUrl = (v) => /^(?:https?:\/\/|www\.)\S+$|^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}(?:[/?#]\S*)?$/i.test(String(v).trim());
 
+const isHexColor = (v) => /^#[0-9a-f]{6}$/i.test(String(v ?? ""));
+const swatch = (hex) => `<span class="swatch" style="background:${hex}"></span>`;
+
 /** Formatea un valor según la definición de campo (texto plano, sin HTML). */
 function fmtValue(field, value) {
   if (isEmpty(value)) return "";
   switch (field.tipo) {
-    case "moneda": return `${moneyFmt.format(Number(value))} ${CONFIG.moneda || "€"}`;
+    case "moneda": return `${moneyFmt.format(Number(value))} ${CONFIG.moneda || "€"}${field.unidad || ""}`;
     case "numero": return `${numFmt.format(Number(value))}${field.unidad ? " " + field.unidad : ""}`;
     case "porcentaje": return `${numFmt.format(Number(value))} %`;
     case "duracion": return fmtDuration(value);
@@ -80,6 +83,7 @@ function fmtValueHtml(field, value) {
     return `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(value)}</a>`;
   }
   if (field.id === "estado") return `<span class="badge badge-${esc(value)}">${esc(value)}</span>`;
+  if (field.tipo === "color") return isHexColor(value) ? `${swatch(value)} <span class="muted">${esc(value)}</span>` : esc(value);
   if (field.tipo === "impresion" && PRINTS[value]) {
     return `<a href="#/i/${esc(value)}">${esc(PRINTS[value].nombre)}</a>`;
   }
@@ -494,7 +498,7 @@ function fieldInput(field, value, path) {
       return `<input type="text" ${attrs} value="${esc(value)}" placeholder="https://… o D:\\carpeta\\fichero">`;
     case "numero":
     case "moneda": {
-      const unit = field.tipo === "moneda" ? (CONFIG.moneda || "€") : field.unidad;
+      const unit = field.tipo === "moneda" ? `${CONFIG.moneda || "€"}${field.unidad || ""}` : field.unidad;
       const input = `<input type="number" inputmode="decimal" step="${field.tipo === "moneda" ? "0.01" : "any"}" min="0" ${attrs} value="${esc(value)}">`;
       return unit ? `<div class="with-unit">${input}<span>${esc(unit)}</span></div>` : input;
     }
@@ -515,6 +519,10 @@ function fieldInput(field, value, path) {
       return `<select ${attrs}><option value=""></option>${[...opts, ...extra].map((o) =>
         `<option ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     }
+    case "color":
+      // Un <input type="color"> nunca está vacío: solo se guarda si el usuario elige un color.
+      return `<div class="color-input"><input type="color" ${attrs} value="${isHexColor(value) ? esc(value) : "#808080"}">
+        <span class="muted">${isHexColor(value) ? esc(value) : "sin muestra"}</span></div>`;
     case "booleano":
       return `<label class="check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}> Sí</label>`;
     case "impresion": {
