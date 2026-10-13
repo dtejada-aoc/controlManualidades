@@ -155,6 +155,7 @@ const block = (title, html, note = "") => `
 
 async function loadReportData() {
   await loadCatalogs();
+  await loadRegisters(registersUsed());
   const items = await api("GET", "/api/impresiones");
   items.forEach((it) => (it._tot = computeTotals(it)));
   const gastosDef = (CONFIG.registros || []).find((r) => r.id === "gastos");
@@ -335,6 +336,24 @@ function reportProduccion({ items }, charts) {
   }
   const accRows = Object.entries(acc).sort((a, b) => b[1].coste - a[1].coste);
 
+  // Consumo por filamento (gramos y coste de los filamentos de cada placa)
+  const filList = listFieldById("filamentos");
+  const filField = filList?.campos.find((f) => f.tipo === "registro");
+  const costeSub = filList?.campos.find((f) => f.id === "coste");
+  const uso = {};
+  const tiposPorImpresion = {};
+  for (const it of its) for (const p of asArray(it.placas)) for (const sub of asArray(p?.filamentos)) {
+    const k = sub[filField?.id] || "";
+    uso[k] ??= { modelo: 0, desp: 0, coste: 0, impresiones: new Set() };
+    uso[k].modelo += Number(sub.gramosModelo) || 0;
+    uso[k].desp += Number(sub.gramosDesperdicio) || 0;
+    uso[k].coste += Number(costeSub ? fieldValue(costeSub, sub) : 0) || 0;
+    uso[k].impresiones.add(it.id);
+    const tipo = (REGS[filField?.registro] || []).find((x) => x.id === k)?.tipo;
+    if (tipo) (tiposPorImpresion[it.id] ??= new Set()).add(tipo);
+  }
+  const usoRows = Object.entries(uso).sort((a, b) => b[1].modelo + b[1].desp - (a[1].modelo + a[1].desp));
+
   return `
     ${kpis([
       { label: "Impresiones", value: numFmt.format(its.length), sub: `${placas} placas${fallidas ? ` · ${fallidas} fallidas` : ""}` },
@@ -355,7 +374,7 @@ function reportProduccion({ items }, charts) {
       <tbody>${its.map((x) => {
         const accCost = asArray(x.accesorios).reduce((s, r) => s + (Number(costeF ? fieldValue(costeF, r) : r.coste) || 0), 0);
         return `<tr><td>${esc(fmtDate(x.general?.fecha))}</td><td><strong>${esc(printName(x))}</strong>
-          <div class="muted small">${esc([x.general?.material, x.general?.impresora, x.general?.estado].filter(Boolean).join(" · "))}</div></td>
+          <div class="muted small">${esc([[...(tiposPorImpresion[x.id] || [])].join("/"), x.general?.impresora, x.general?.estado].filter(Boolean).join(" · "))}</div></td>
           <td class="num">${asArray(x.placas).length}</td><td class="num">${esc(hours(x._tot.tiempoImpresion))}</td>
           <td class="num">${esc(grams(x._tot.gramosTotal || 0))}</td><td class="num">${esc(pct(x._tot.porcentajeDesperdicio))}</td>
           <td class="num">${accCost ? esc(money(accCost)) : "—"}</td><td class="num">${esc(money(x._tot.coste))}</td>
@@ -365,6 +384,13 @@ function reportProduccion({ items }, charts) {
         <td class="num">${esc(grams(t("gramosTotal")))}</td><td class="num">${esc(pct(t("gramosTotal") ? (t("gramosDesperdicio") / t("gramosTotal")) * 100 : null))}</td>
         <td></td><td class="num">${esc(money(t("coste")))}</td><td></td><td></td></tr></tfoot>
     </table></div>`)}
+    ${usoRows.length ? block("Consumo por filamento", `<div class="table-wrap"><table class="report-table">
+      <thead><tr><th>Filamento</th><th class="num">Impresiones</th><th class="num">Modelo</th><th class="num">Desperdicio</th>
+        <th class="num">Total</th><th class="num">Coste</th></tr></thead>
+      <tbody>${usoRows.map(([k, v]) => `<tr><td>${k ? fmtValueHtml(filField, k) : '<span class="muted">Sin especificar</span>'}</td>
+        <td class="num">${v.impresiones.size}</td><td class="num">${esc(grams(v.modelo))}</td><td class="num">${esc(grams(v.desp))}</td>
+        <td class="num"><strong>${esc(grams(v.modelo + v.desp))}</strong></td><td class="num">${esc(money(v.coste))}</td></tr>`).join("")}</tbody>
+    </table></div>`) : ""}
     ${accRows.length ? block("Accesorios utilizados", `<div class="table-wrap"><table class="report-table">
       <thead><tr><th>Accesorio</th><th class="num">Cantidad</th><th class="num">Coste</th></tr></thead>
       <tbody>${accRows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${esc(numFmt.format(v.cantidad))}</td><td class="num">${esc(money(v.coste))}</td></tr>`).join("")}</tbody>

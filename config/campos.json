@@ -166,7 +166,6 @@
           "opciones": ["Pendiente", "Imprimiendo", "Impreso", "Pintando", "Terminado", "Fallido"], "enListado": true },
         { "id": "unidades", "etiqueta": "Unidades obtenidas", "tipo": "numero", "porDefecto": 1, "enListado": true,
           "ayuda": "Piezas iguales que salen de esta impresión (para el coste por unidad)" },
-        { "id": "material", "etiqueta": "Material",          "tipo": "catalogo", "catalogo": "tiposFilamento" },
         { "id": "impresora","etiqueta": "Impresora",         "tipo": "catalogo", "catalogo": "impresoras" },
         { "id": "enlace",   "etiqueta": "Modelo (web o fichero)", "tipo": "enlace",
           "ayuda": "Una URL o la ruta del fichero .3mf; desde la ficha podrás abrirlo" },
@@ -182,11 +181,26 @@
       "campos": [
         { "id": "nombre",            "etiqueta": "Descripción",            "tipo": "texto" },
         { "id": "tiempo",            "etiqueta": "Tiempo de impresión",    "tipo": "duracion", "total": "tiempoImpresion" },
-        { "id": "gramosModelo",      "etiqueta": "Gramos del modelo",      "tipo": "numero", "unidad": "g", "total": ["gramosModelo", "gramosTotal"] },
-        { "id": "gramosDesperdicio", "etiqueta": "Gramos desperdiciados",  "tipo": "numero", "unidad": "g", "total": ["gramosDesperdicio", "gramosTotal"],
-          "ayuda": "Soportes, purga, torre de limpieza, borde…" },
-        { "id": "coste",             "etiqueta": "Coste",                  "tipo": "moneda", "total": "coste" },
-        { "id": "correcta",          "etiqueta": "Impresión correcta",     "tipo": "booleano", "porDefecto": true }
+        { "id": "correcta",          "etiqueta": "Impresión correcta",     "tipo": "booleano", "porDefecto": true },
+        { "id": "gramos",            "etiqueta": "Filamento usado",        "tipo": "numero", "unidad": "g",
+          "sumaDe": { "lista": "filamentos", "campos": ["gramosModelo", "gramosDesperdicio"] } },
+        { "id": "coste",             "etiqueta": "Coste de material",      "tipo": "moneda",
+          "sumaDe": { "lista": "filamentos", "campos": ["coste"] } },
+        { "id": "filamentos",        "etiqueta": "Filamentos de la placa", "tipo": "lista", "elemento": "Añadir filamento", "inicial": 1,
+          "ayuda": "Gramos de cada filamento que usa la placa. El precio por kg se copia del filamento al elegirlo; desperdicio = soportes, purga, torre, borde…",
+          "campos": [
+            { "id": "filamento",         "etiqueta": "Filamento",     "tipo": "registro", "registro": "filamentos",
+              "mostrar": ["tipo", "nombre", "color", "marca"], "muestra": "colorHex",
+              "rellena": { "precioKg": "precioKg" } },
+            { "id": "gramosModelo",      "etiqueta": "Modelo (g)",    "tipo": "numero", "unidad": "g", "abrev": "modelo",
+              "total": ["gramosModelo", "gramosTotal"] },
+            { "id": "gramosDesperdicio", "etiqueta": "Desperdicio (g)", "tipo": "numero", "unidad": "g", "abrev": "desp.",
+              "total": ["gramosDesperdicio", "gramosTotal"] },
+            { "id": "precioKg",          "etiqueta": "Precio",        "tipo": "moneda", "unidad": "/kg", "subtotal": false },
+            { "id": "coste",             "etiqueta": "Coste",         "tipo": "moneda",
+              "formula": "(gramosModelo + gramosDesperdicio) * precioKg / 1000", "ceroSiFalta": ["gramosModelo", "gramosDesperdicio"],
+              "total": "coste" }
+          ] }
       ]
     },
     {

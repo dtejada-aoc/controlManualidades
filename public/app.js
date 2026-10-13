@@ -11,6 +11,7 @@ const app = document.getElementById("app");
 let CONFIG = null;
 const CATALOGS = {}; // id → lista de elementos
 const PRINTS = {};   // id → { nombre, tot } (para los campos de tipo "impresion")
+const REGS = {};     // id de registro → lista (para los campos de tipo "registro", p. ej. filamentos)
 let formDirty = false;
 
 // ------------------------------------------------------------ utilidades
@@ -54,6 +55,15 @@ const isLocalPath = (v) => /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(String(v).trim().r
 /** ¿Parece una dirección web? (si no, p. ej. un nº de pedido, se muestra como texto) */
 const isUrl = (v) => /^(?:https?:\/\/|www\.)\S+$|^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}(?:[/?#]\S*)?$/i.test(String(v).trim());
 
+/** Resumen en una línea de un elemento de una lista anidada (p. ej. un filamento de una placa). */
+function listItemText(field, sub) {
+  return field.campos.map((sf) => {
+    const v = fieldValue(sf, sub);
+    if (isEmpty(v) || sf.subtotal === false) return "";
+    return `${fmtValue(sf, v)}${sf.abrev ? " " + sf.abrev : ""}`;
+  }).filter(Boolean).join(" · ");
+}
+
 const isHexColor = (v) => /^#[0-9a-f]{6}$/i.test(String(v ?? ""));
 const swatch = (hex) => `<span class="swatch" style="background:${hex}"></span>`;
 
@@ -68,6 +78,8 @@ function fmtValue(field, value) {
     case "fecha": return fmtDate(value);
     case "booleano": return value ? "Sí" : "No";
     case "impresion": return PRINTS[value]?.nombre || `${value} (no encontrada)`;
+    case "registro": return registerLabel(field, value) || "(eliminado)";
+    case "lista": return asArray(value).map((sub) => listItemText(field, sub)).join("; ");
     default: return String(value);
   }
 }
@@ -83,6 +95,21 @@ function fmtValueHtml(field, value) {
     return `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(value)}</a>`;
   }
   if (field.id === "estado") return `<span class="badge badge-${esc(value)}">${esc(value)}</span>`;
+  if (field.tipo === "registro") {
+    const item = (REGS[field.registro] || []).find((x) => x.id === value);
+    const hex = item?.[field.muestra];
+    return `${isHexColor(hex) ? swatch(hex) + " " : ""}${esc(fmtValue(field, value))}`;
+  }
+  if (field.tipo === "lista") {
+    // Primer campo (p. ej. el filamento) destacado; el resto en una línea discreta
+    const [main, ...rest] = field.campos;
+    return `<ul class="sublist">${asArray(value).map((sub) => {
+      const head = isEmpty(sub?.[main.id]) ? '<span class="muted">Sin especificar</span>' : fmtValueHtml(main, fieldValue(main, sub));
+      const tail = rest.filter((sf) => sf.subtotal !== false && !isEmpty(fieldValue(sf, sub)))
+        .map((sf) => `${fmtValue(sf, fieldValue(sf, sub))}${sf.abrev ? " " + sf.abrev : ""}`).join(" · ");
+      return `<li>${head} <span class="muted">${esc(tail)}</span></li>`;
+    }).join("")}</ul>`;
+  }
   if (field.tipo === "color") return isHexColor(value) ? `${swatch(value)} <span class="muted">${esc(value)}</span>` : esc(value);
   if (field.tipo === "impresion" && PRINTS[value]) {
     return `<a href="#/i/${esc(value)}">${esc(PRINTS[value].nombre)}</a>`;
@@ -127,6 +154,23 @@ async function loadPrints(items) {
   for (const k of Object.keys(PRINTS)) delete PRINTS[k];
   for (const it of items) PRINTS[it.id] = { nombre: printName(it), tot: it._tot || computeTotals(it) };
   return items;
+}
+
+/** Carga los registros indicados (p. ej. filamentos) para los campos de tipo "registro". */
+async function loadRegisters(ids) {
+  await Promise.all([...new Set(ids)].map(async (id) => { REGS[id] = await api("GET", `/api/registros/${id}`); }));
+}
+
+/** Registros que usan los campos de las secciones de impresión (también dentro de listas). */
+const registersUsed = () => sections().flatMap((s) => s.campos)
+  .flatMap((f) => (f.tipo === "lista" ? f.campos : [f]))
+  .filter((f) => f.tipo === "registro").map((f) => f.registro);
+
+/** Texto para mostrar un elemento de registro, según "mostrar" del campo. */
+function registerLabel(field, id) {
+  const item = (REGS[field.registro] || []).find((x) => x.id === id);
+  if (!item) return null;
+  return asArray(field.mostrar || ["nombre"]).map((k) => item[k]).filter((v) => !isEmpty(v)).join(" · ");
 }
 
 async function loadCatalogs() {
@@ -182,11 +226,30 @@ function evalFormula(expr, lookup) {
   }
 }
 
-/** Valor de un campo dentro de una fila (calcula las fórmulas). */
+/** Valor de un campo dentro de una fila (calcula las fórmulas y las sumas de listas). */
 function fieldValue(field, row) {
-  if (field.formula) return evalFormula(field.formula, (k) => row?.[k]);
+  if (field.formula) {
+    // "ceroSiFalta": campos que, vacíos, cuentan como 0 (p. ej. gramos desperdiciados)
+    const zero = asArray(field.ceroSiFalta);
+    return evalFormula(field.formula, (k) => (isEmpty(row?.[k]) && zero.includes(k) ? 0 : row?.[k]));
+  }
+  if (field.sumaDe) {
+    // Suma de campos de una lista anidada, p. ej. el coste de los filamentos de una placa
+    const lista = listFieldById(field.sumaDe.lista);
+    let s = null;
+    for (const sub of asArray(row?.[field.sumaDe.lista])) {
+      for (const id of asArray(field.sumaDe.campos)) {
+        const sf = lista?.campos.find((f) => f.id === id);
+        const v = sf ? fieldValue(sf, sub) : sub?.[id];
+        if (!isEmpty(v) && !isNaN(Number(v))) s = (s || 0) + Number(v);
+      }
+    }
+    return s;
+  }
   return row?.[field.id];
 }
+
+const listFieldById = (id) => sections().flatMap((s) => s.campos).find((f) => f.tipo === "lista" && f.id === id);
 
 function defaultValue(field) {
   if (field.porDefecto === "hoy") return today();
@@ -206,15 +269,20 @@ function catalogDefault(cid) {
 /** Suma los campos marcados con "total" y luego calcula los totales con fórmula. */
 function computeTotals(item) {
   const totals = {};
+  const add = (field, row) => {
+    const v = fieldValue(field, row);
+    if (!isEmpty(v) && !isNaN(Number(v))) {
+      for (const key of asArray(field.total)) totals[key] = (totals[key] || 0) + Number(v);
+    }
+  };
   for (const sec of sections()) {
     const rows = sec.repetible ? asArray(item[sec.id]) : [item[sec.id] || {}];
     for (const field of sec.campos) {
-      if (!field.total) continue;
       for (const row of rows) {
-        const v = fieldValue(field, row);
-        if (!isEmpty(v) && !isNaN(Number(v))) {
-          for (const key of asArray(field.total)) totals[key] = (totals[key] || 0) + Number(v);
-        }
+        if (field.tipo === "lista") {
+          // Listas anidadas (filamentos de una placa): se suman sus campos con "total"
+          for (const sub of asArray(row?.[field.id])) for (const sf of field.campos) if (sf.total) add(sf, sub);
+        } else if (field.total) add(field, row);
       }
     }
   }
@@ -353,6 +421,7 @@ async function viewList() {
 
 async function viewDetail(id) {
   const it = await api("GET", `/api/impresiones/${encodeURIComponent(id)}`);
+  await loadRegisters(registersUsed());
   const tot = computeTotals(it);
   const gen = generalSection();
   // Las ventas viven en su propio registro; aquí solo se enlazan discretamente.
@@ -486,10 +555,20 @@ async function viewDetail(id) {
 
 function fieldInput(field, value, path) {
   const attrs = `data-path="${esc(path)}" data-tipo="${field.tipo}" id="f-${esc(path)}"`;
-  if (field.formula) {
+  if (field.formula || field.sumaDe) {
     return `<output class="computed" data-formula="${esc(path)}"></output>`;
   }
   switch (field.tipo) {
+    case "registro": {
+      const items = [...(REGS[field.registro] || [])].sort((a, b) =>
+        (registerLabel(field, a.id) || "").localeCompare(registerLabel(field, b.id) || "", "es"));
+      const missing = !isEmpty(value) && !items.some((x) => x.id === value);
+      return `<select ${attrs}><option value="">${items.length ? "" : "(no hay ninguno registrado)"}</option>
+        ${missing ? `<option value="${esc(value)}" selected>(eliminado)</option>` : ""}
+        ${items.map((x) => `<option value="${esc(x.id)}" ${x.id === value ? "selected" : ""}>${esc(registerLabel(field, x.id))}</option>`).join("")}</select>`;
+    }
+    case "lista":
+      return listEditor(field, asArray(value), path);
     case "textoLargo":
       return `<textarea ${attrs}>${esc(value)}</textarea>`;
     case "fecha":
@@ -537,15 +616,34 @@ function fieldInput(field, value, path) {
   }
 }
 
+/**
+ * Editor de una lista anidada (p. ej. los filamentos de una placa): una fila
+ * compacta por elemento, con cabecera de columnas y botones para añadir/quitar.
+ */
+function listEditor(field, rows, path) {
+  const cols = field.campos;
+  const tpl = cols.map((f) => (f.tipo === "registro" ? "minmax(180px, 2.4fr)" : "minmax(90px, 1fr)")).join(" ") + " 36px";
+  return `<div class="sublist-editor" data-list="${esc(path)}" style="--cols:${tpl}">
+    <div class="sub-row sub-head">${cols.map((f) => `<span>${esc(f.etiqueta)}</span>`).join("")}<span></span></div>
+    ${rows.map((r, j) => `<div class="sub-row">${cols.map((f) =>
+      `<div class="sub-cell" data-label="${esc(f.etiqueta)}">${fieldInput(f, r?.[f.id], `${path}.${j}.${f.id}`)}</div>`).join("")}
+      <button type="button" class="btn btn-sm btn-ghost btn-danger" data-sub="rm" data-list="${esc(path)}" data-j="${j}" title="Quitar">×</button>
+    </div>`).join("")}
+    <button type="button" class="btn btn-sm" data-sub="add" data-list="${esc(path)}">+ ${esc(field.elemento || "Añadir")}</button>
+    ${field.ayuda ? `<span class="help">${esc(field.ayuda)}</span>` : ""}
+  </div>`;
+}
+
 function fieldBlock(field, value, path) {
-  const wide = field.tipo === "textoLargo";
-  const label = field.tipo === "booleano" || field.formula ? `<span class="label">${esc(field.etiqueta)}</span>`
+  const wide = field.tipo === "textoLargo" || field.tipo === "lista";
+  const label = field.tipo === "booleano" || field.formula || field.sumaDe || field.tipo === "lista" ? `<span class="label">${esc(field.etiqueta)}</span>`
     : `<label for="f-${esc(path)}">${esc(field.etiqueta)}${field.obligatorio ? ' <span class="req">*</span>' : ""}</label>`;
   let help = field.ayuda ? esc(field.ayuda) : "";
   if (field.tipo === "catalogo") {
     const empty = !(CATALOGS[field.catalogo] || []).length;
     help = `${help ? help + " · " : ""}${empty ? "Catálogo vacío: " : ""}<a href="#/catalogos">gestionar catálogo</a>`;
   }
+  if (field.tipo === "lista") help = ""; // la ayuda va dentro del editor de la lista
   return `<div class="field ${wide ? "wide" : ""}">${label}${fieldInput(field, value, path)}
     ${help ? `<span class="help">${help}</span>` : ""}</div>`;
 }
@@ -553,6 +651,10 @@ function fieldBlock(field, value, path) {
 function newRow(sec) {
   const row = {};
   for (const f of sec.campos) {
+    if (f.tipo === "lista") {
+      if (f.inicial) row[f.id] = Array.from({ length: f.inicial }, () => newRow(f));
+      continue;
+    }
     const v = defaultValue(f);
     if (!isEmpty(v)) row[f.id] = v;
   }
@@ -606,8 +708,37 @@ function checkRequired(list) {
 function rowIsBlank(fields, row) {
   return !Object.entries(row || {}).some(([k, v]) => {
     const f = fields.find((x) => x.id === k);
+    if (f?.tipo === "lista") return asArray(v).some((sub) => !rowIsBlank(f.campos, sub));
     return !isEmpty(v) && !(f && v === defaultValue(f));
   });
+}
+
+/** Quita de las listas anidadas los elementos que solo tienen valores por defecto. */
+function pruneLists(fields, row) {
+  for (const f of fields.filter((x) => x.tipo === "lista")) {
+    if (Array.isArray(row?.[f.id])) row[f.id] = row[f.id].filter((sub) => !rowIsBlank(f.campos, sub));
+  }
+}
+
+/**
+ * Localiza el campo y la fila de una ruta del formulario de impresión, también
+ * dentro de listas: "placas.0.filamentos.1.gramosModelo".
+ */
+function resolvePath(draft, path) {
+  const keys = path.split(".");
+  const sec = sectionById(keys[0]);
+  if (!sec) return {};
+  let row = sec.repetible ? asArray(draft[sec.id])[Number(keys[1])] : draft[sec.id];
+  let rest = keys.slice(sec.repetible ? 2 : 1);
+  let fields = sec.campos;
+  while (rest.length > 1) {
+    const lista = fields.find((f) => f.id === rest[0] && f.tipo === "lista");
+    if (!lista) break;
+    row = asArray(row?.[rest[0]])[Number(rest[1])];
+    fields = lista.campos;
+    rest = rest.slice(2);
+  }
+  return { sec, field: fields.find((f) => f.id === rest[0]), row };
 }
 
 // ------------------------------------------------------ formulario impresión
@@ -615,6 +746,7 @@ function rowIsBlank(fields, row) {
 async function viewForm(id) {
   const editing = !!id;
   const params = location.hash.split("?")[1] || "";
+  await loadRegisters(registersUsed());
   let draft;
   if (editing) {
     draft = await api("GET", `/api/impresiones/${encodeURIComponent(id)}`);
@@ -673,16 +805,14 @@ async function viewForm(id) {
   const updateComputed = (sec) => {
     const body = app.querySelector(`[data-sec="${sec.id}"]`);
     body.querySelectorAll("output[data-formula]").forEach((out) => {
-      const keys = out.dataset.formula.split(".");
-      const field = sec.campos.find((f) => f.id === keys[keys.length - 1]);
-      const row = sec.repetible ? asArray(draft[sec.id])[Number(keys[1])] : draft[sec.id];
-      out.textContent = fmtValue(field, fieldValue(field, row)) || "—";
+      const { field, row } = resolvePath(draft, out.dataset.formula);
+      if (field) out.textContent = fmtValue(field, fieldValue(field, row)) || "—";
     });
     const el = body.querySelector(".subtotal");
     if (el) {
       const rows = asArray(draft[sec.id]);
       const sub = sectionSubtotal(sec, rows);
-      const txt = sec.campos.filter((f) => f.total && sub[f.id] !== undefined)
+      const txt = sec.campos.filter((f) => (f.total || f.sumaDe) && sub[f.id] !== undefined)
         .map((f) => `${esc(f.etiqueta)}: <strong>${esc(fmtValue(f, sub[f.id]))}</strong>`).join(" · ");
       el.innerHTML = rows.length > 1 && txt ? `Total ${esc(sec.titulo.toLowerCase())} — ${txt}` : "";
     }
@@ -728,19 +858,36 @@ async function viewForm(id) {
       renderSection(sec);
       if (b.dataset.act === "add") body.querySelector(".repeat-item:last-of-type")?.scrollIntoView({ block: "center", behavior: "smooth" });
     }));
+    // Listas anidadas (filamentos de cada placa): añadir / quitar elementos
+    body.querySelectorAll("[data-sub]").forEach((b) => b.addEventListener("click", () => {
+      const keys = b.dataset.list.split(".");
+      const { field } = resolvePath(draft, b.dataset.list);
+      const parent = resolvePath(draft, `${keys.slice(0, -1).join(".")}.__`).row;
+      if (!field || !parent) return;
+      const list = (parent[field.id] = asArray(parent[field.id]));
+      if (b.dataset.sub === "add") list.push(newRow(field));
+      if (b.dataset.sub === "rm") {
+        const j = Number(b.dataset.j);
+        if (!rowIsBlank(field.campos, list[j]) && !confirm(`¿Quitar este ${(field.elemento || "elemento").toLowerCase()}?`)) return;
+        list.splice(j, 1);
+      }
+      formDirty = true;
+      renderSection(sec);
+    }));
   };
   sections().forEach(renderSection);
 
   const form = document.getElementById("form");
   bindInputs(form, draft, (holder, e) => {
-    const keys = holder.dataset.path.split(".");
-    const sec = sectionById(keys[0]);
+    const { sec, field, row } = resolvePath(draft, holder.dataset.path);
     if (!sec) return;
-    const field = sec.campos.find((f) => f.id === keys[keys.length - 1]);
-    // Al elegir un elemento de catálogo se copian sus datos (p. ej. el precio).
-    if (e.type === "change" && field?.tipo === "catalogo" && field.rellena) {
-      const item = (CATALOGS[field.catalogo] || []).find((c) => c.nombre === readInput(holder));
-      const row = sec.repetible ? draft[sec.id][Number(keys[1])] : draft[sec.id];
+    // Al elegir un elemento de catálogo o de registro se copian sus datos
+    // (p. ej. el precio del accesorio o el precio por kg del filamento).
+    if (e.type === "change" && field?.rellena && row) {
+      const value = readInput(holder);
+      const item = field.tipo === "registro"
+        ? (REGS[field.registro] || []).find((x) => x.id === value)
+        : (CATALOGS[field.catalogo] || []).find((c) => c.nombre === value);
       if (item) for (const [dest, src] of Object.entries(field.rellena)) {
         if (!isEmpty(item[src])) row[dest] = item[src];
       }
@@ -800,8 +947,11 @@ async function viewForm(id) {
     if (!checkRequired(missing)) return;
 
     // Quitar filas que solo tienen valores por defecto.
-    for (const sec of sections().filter((s) => s.repetible)) {
-      draft[sec.id] = asArray(draft[sec.id]).filter((r) => !rowIsBlank(sec.campos, r));
+    for (const sec of sections()) {
+      if (sec.repetible) {
+        draft[sec.id] = asArray(draft[sec.id]).filter((r) => !rowIsBlank(sec.campos, r));
+        draft[sec.id].forEach((r) => pruneLists(sec.campos, r));
+      } else pruneLists(sec.campos, draft[sec.id]);
     }
 
     const btn = document.getElementById("save");

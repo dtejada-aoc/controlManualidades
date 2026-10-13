@@ -24,7 +24,9 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 
 ## Pantallas
 
-- **Impresiones**: listado con totales; cada ficha muestra producción y filamento.
+- **Impresiones**: listado con totales; cada ficha muestra producción y filamento. Cada placa lleva
+  uno o varios **filamentos** con sus gramos (modelo y desperdicio); el coste de material se calcula
+  con el precio por kg del filamento (copiado al elegirlo, para que no cambie si luego varía el precio).
 - **Filamentos**: bobinas con nombre, marca, tipo, color (con muestra opcional) y precio por kg.
 - **Gastos**: compras de material de apoyo (bobinas, recambios, limpieza…) con desglose por tipo y año.
   Es solo control del gasto: no se resta de los beneficios de las impresiones (el filamento ya se cuenta en el coste de cada placa).
@@ -34,7 +36,7 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
   **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
   Cada impresión también tiene botón **PDF** para exportar su ficha.
 - **Catálogos**: impresoras (una marcada por defecto), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
-  (también se usan en el campo Material de cada impresión).
+  (se eligen en la ficha de cada filamento).
 
 ## Cómo se calcula
 
@@ -64,7 +66,9 @@ tus datos nunca se suben al repositorio.
 - `secciones`: bloques del formulario. Con `"repetible": true` se pueden añadir varios elementos (placas, accesorios…).
 - `campos`: cada campo tiene `id`, `etiqueta` y `tipo`:
   `texto`, `textoLargo`, `numero` (con `unidad` opcional), `moneda`, `duracion` (se guarda en minutos),
-  `fecha`, `seleccion` (con `opciones`), `booleano`, `enlace`, `color`, `impresion`.
+  `fecha`, `seleccion` (con `opciones`), `booleano`, `enlace`, `color`, `impresion`,
+  `registro` (elige un elemento de un registro, p. ej. un filamento) y `lista` (lista anidada con sus `campos`).
+- `sumaDe`: campo calculado que suma campos de una lista anidada; `ceroSiFalta` en una fórmula trata esos campos vacíos como 0.
 - Opciones extra: `obligatorio`, `ayuda`, `porDefecto`, `enListado` (columna en el listado).
 - Tipo `catalogo` (con `"catalogo": "accesorios"`): desplegable con los elementos del catálogo;
   `rellena` copia datos del elemento elegido a la fila (ej. el precio).

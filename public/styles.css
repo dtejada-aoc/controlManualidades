@@ -364,3 +364,20 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .nowrap { white-space: nowrap; }
 .color-input { display: flex; align-items: center; gap: 10px; }
 .color-input input[type=color] { width: 52px; height: 38px; padding: 3px; cursor: pointer; }
+
+/* listas anidadas: filamentos de cada placa */
+.sublist-editor { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--border);
+  border-radius: 8px; background: var(--surface); }
+.sublist-editor > .btn { align-self: flex-start; margin-top: 2px; }
+.sub-row { display: grid; grid-template-columns: var(--cols); gap: 8px; align-items: center; }
+.sub-head { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.sub-cell .computed { min-height: 0; padding: 7px 10px; }
+.sublist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sublist li { white-space: nowrap; }
+@media (max-width: 760px) {
+  .sub-head { display: none; }
+  .sub-row { grid-template-columns: 1fr 1fr; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .sub-cell:first-child { grid-column: 1 / -1; }
+  .sub-cell::before { content: attr(data-label); display: block; font-size: .75rem; color: var(--muted); margin-bottom: 2px; }
+}
+@media print { .sublist li { white-space: normal; } }
