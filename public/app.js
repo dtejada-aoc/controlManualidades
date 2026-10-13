@@ -176,7 +176,7 @@ const registersUsed = () => sections().flatMap((s) => s.campos)
 function registerLabel(field, id) {
   const item = (REGS[field.registro] || []).find((x) => x.id === id);
   if (!item) return null;
-  return asArray(field.mostrar || ["nombre"]).map((k) => item[k]).filter((v) => !isEmpty(v)).join(" · ");
+  return asArray(field.mostrar || ["nombre"]).map((k) => item[k]).filter((v) => !isEmpty(v)).join(field.separador ?? " · ");
 }
 
 async function loadCatalogs() {
@@ -566,7 +566,11 @@ function fieldInput(field, value, path) {
   }
   switch (field.tipo) {
     case "registro": {
+      // Orden alfabético por lo que se muestra (empieza por el color); los que no tienen
+      // el primer dato (p. ej. sin color) van al final.
+      const first = asArray(field.mostrar || ["nombre"])[0];
       const items = [...(REGS[field.registro] || [])].sort((a, b) =>
+        isEmpty(a[first]) - isEmpty(b[first]) ||
         (registerLabel(field, a.id) || "").localeCompare(registerLabel(field, b.id) || "", "es"));
       const missing = !isEmpty(value) && !items.some((x) => x.id === value);
       return `<select ${attrs}><option value="">${items.length ? "" : "(no hay ninguno registrado)"}</option>

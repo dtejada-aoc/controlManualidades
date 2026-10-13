@@ -190,7 +190,7 @@
           "ayuda": "Gramos de cada filamento que usa la placa. El precio por kg se copia del filamento al elegirlo; desperdicio = soportes, purga, torre, borde…",
           "campos": [
             { "id": "filamento",         "etiqueta": "Filamento",     "tipo": "registro", "registro": "filamentos",
-              "mostrar": ["tipo", "nombre", "color", "marca"], "muestra": "colorHex",
+              "mostrar": ["color", "tipo", "nombre"], "separador": " - ", "muestra": "colorHex",
               "rellena": { "precioKg": "precioKg" } },
             { "id": "gramosModelo",      "etiqueta": "Modelo (g)",    "tipo": "numero", "unidad": "g", "abrev": "modelo",
               "total": ["gramosModelo", "gramosTotal"] },
