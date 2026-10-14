@@ -12,8 +12,8 @@ Funciona en local, sin base de datos (todo se guarda en ficheros JSON) y sin dep
 ## Instalación y arranque
 
 ```bash
-git clone https://github.com/dtejada-aoc/impresion3d.git
-cd impresion3d
+git clone https://github.com/dtejada-aoc/controlManualidades.git
+cd controlManualidades
 python app.py
 ```
 
