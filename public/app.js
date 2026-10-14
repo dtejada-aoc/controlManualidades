@@ -176,8 +176,40 @@ const printName = (p) => p.general?.nombre || "(sin nombre)";
 async function loadPrints(items) {
   items ??= await api("GET", "/api/impresiones");
   for (const k of Object.keys(PRINTS)) delete PRINTS[k];
-  for (const it of items) PRINTS[it.id] = { nombre: printName(it), tot: it._tot || computeTotals(it) };
+  for (const it of items) {
+    const tot = { ...(it._tot || computeTotals(it)), unidades: Number(it.general?.unidades) || 1 };
+    // Función: depende de lo que se marque en la venta (incluir diseño, postprocesado…)
+    tot.costeVenta = (flags) => saleUnitCost(tot, flags);
+    PRINTS[it.id] = { nombre: printName(it), tot };
+  }
   return items;
+}
+
+/** Componentes del coste real que se pueden incluir o no en una venta (y si se incluyen por defecto). */
+const SALE_PARTS = [
+  { flag: "incluirElectricidad", total: "costeElectricidad", etiqueta: "electricidad", def: true },
+  { flag: "incluirAmortizacion", total: "costeAmortizacion", etiqueta: "amortización", def: true },
+  { flag: "incluirPostprocesado", total: "costePostprocesado", etiqueta: "postprocesado", def: true },
+  { flag: "incluirDiseno", total: "costeDiseno", etiqueta: "diseño", def: false },
+];
+
+/**
+ * Coste por unidad para una venta: material y accesorios, más los componentes del
+ * coste real marcados en la venta (si los costes reales están activados).
+ */
+function saleUnitCost(tot, flags = {}) {
+  if (isEmpty(tot.coste) && !costsActive()) return null;
+  return saleCostParts(tot, flags).reduce((s, p) => s + p.valor, 0) / (tot.unidades || 1);
+}
+
+/** Desglose (por impresión completa) de lo que entra en el coste de una venta. */
+function saleCostParts(tot, flags = {}) {
+  const parts = [{ etiqueta: "material", valor: Number(tot.coste) || 0 }];
+  if (!costsActive()) return parts;
+  for (const p of SALE_PARTS) {
+    if ((flags?.[p.flag] ?? p.def) && Number(tot[p.total]) > 0) parts.push({ etiqueta: p.etiqueta, valor: Number(tot[p.total]) });
+  }
+  return parts;
 }
 
 /** Carga los registros indicados (p. ej. filamentos) para los campos de tipo "registro". */

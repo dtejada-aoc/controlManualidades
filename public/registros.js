@@ -211,6 +211,7 @@ async function viewRegister(def, params = "") {
       <form class="card card-pad section editor-card" id="reg-form" novalidate style="margin-top:0;margin-bottom:20px">
         <h2>${isNew ? esc(nuevo) : `Editar ${esc(elem)}`}</h2>
         <div class="form-grid" id="reg-fields" style="margin-top:12px"></div>
+        <p class="muted small" id="reg-note" style="margin:10px 0 0"></p>
         <div class="editor-actions">
           ${isNew ? "" : `<button type="button" class="btn btn-danger" id="reg-del">Eliminar</button>`}
           <span style="flex:1"></span>
@@ -219,19 +220,28 @@ async function viewRegister(def, params = "") {
         </div>
       </form>`;
     const form = document.getElementById("reg-form");
-    const updateComputed = () => form.querySelectorAll("output[data-formula]").forEach((out) => {
-      const f = def.campos.find((x) => `e.${x.id}` === out.dataset.formula);
-      out.innerHTML = isEmpty(val(f, draft)) ? "—" : fmtValueHtml(f, val(f, draft));
-    });
+    const updateComputed = () => {
+      form.querySelectorAll("output[data-formula]").forEach((out) => {
+        const f = def.campos.find((x) => `e.${x.id}` === out.dataset.formula);
+        out.innerHTML = isEmpty(val(f, draft)) ? "—" : fmtValueHtml(f, val(f, draft));
+      });
+      // Desglose del coste por unidad de la venta (material + lo marcado)
+      const note = document.getElementById("reg-note");
+      const tot = printField && PRINTS[draft[printField.id]]?.tot;
+      if (note) note.innerHTML = tot && costsActive() ? `Coste por unidad según la impresión: ${saleCostParts(tot, draft)
+        .map((p) => `${esc(p.etiqueta)} ${esc(fmtValue({ tipo: "moneda" }, p.valor / (tot.unidades || 1)))}`).join(" + ")}
+        = <strong>${esc(fmtValue({ tipo: "moneda" }, saleUnitCost(tot, draft)))}</strong>` : "";
+    };
+    const editable = () => def.campos.filter((f) => f.ajuste !== "costes" || costsActive());
     const renderFields = () => {
-      document.getElementById("reg-fields").innerHTML = def.campos.map((f) => fieldBlock(f, draft[f.id], `e.${f.id}`)).join("");
+      document.getElementById("reg-fields").innerHTML = editable().map((f) => fieldBlock(f, draft[f.id], `e.${f.id}`)).join("");
       updateComputed();
     };
     renderFields();
     bindInputs(form, { e: draft }, (holder, e) => {
       const f = def.campos.find((x) => `e.${x.id}` === holder.dataset.path);
-      if (e.type === "change" && f?.rellena) {
-        applyFill(draft, f);
+      if (e.type === "change" && (f?.rellena || f?.recalcula)) {
+        applyFill(draft, f?.rellena ? f : def.campos.find((x) => x.id === f.recalcula));
         renderFields();
         return;
       }
@@ -278,8 +288,9 @@ async function viewRegister(def, params = "") {
         : (CATALOGS[f.catalogo] || []).find((c) => c.nombre === draft[f.id]);
       if (!source) continue;
       for (const [dest, src] of Object.entries(f.rellena)) {
-        const v = Number(source[src]);
-        if (!isEmpty(source[src]) && !isNaN(v)) draft[dest] = Math.round(v * 100) / 100;
+        const raw = typeof source[src] === "function" ? source[src](draft) : source[src];
+        const v = Number(raw);
+        if (!isEmpty(raw) && !isNaN(v)) draft[dest] = Math.round(v * 100) / 100;
       }
     }
   }

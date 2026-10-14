@@ -166,7 +166,7 @@ async function loadReportData() {
   const ventas = (ventasDef ? await api("GET", "/api/registros/ventas") : []).map((v) => {
     const it = byId[v.impresion] || { id: v.impresion, general: { nombre: `${v.impresion || "?"} (eliminada)` }, _tot: {} };
     const cantidad = Number(v.cantidad) || 0;
-    const costeU = !isEmpty(v.costeUnidad) ? Number(v.costeUnidad) : (it._tot.costeUnidad ?? null);
+    const costeU = !isEmpty(v.costeUnidad) ? Number(v.costeUnidad) : (saleUnitCost({ ...it._tot, unidades: Number(it.general?.unidades) || 1 }, v) ?? null);
     return { it, v, cantidad, importe: cantidad * (Number(v.precioUnidad) || 0), costeU,
       coste: costeU !== null ? costeU * cantidad : 0 };
   });
