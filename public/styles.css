@@ -397,3 +397,15 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .btn.pending { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
 .btn.pending::after { content: " •"; }
 .order-btns .btn { font-size: 1rem; line-height: 1.2; }
+
+/* configuración */
+code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 10px; }
+.settings-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--surface-2); }
+.settings-block h3 { font-size: .95rem; margin-bottom: 10px; }
+.settings-block .form-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.rate { margin: 8px 0 0; font-weight: 600; color: var(--accent); min-height: 1.2em; }
+.rate-example { margin: 12px 0 0; }
+.switch { font-size: .95rem; }
+#costes-body.disabled { opacity: .55; }
+.btn.suggest { align-self: flex-start; font-size: .8rem; color: var(--accent); padding-left: 0; white-space: normal; text-align: left; }

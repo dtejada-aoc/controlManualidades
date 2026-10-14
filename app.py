@@ -6,6 +6,7 @@ data/impresiones/<id>/datos.json junto con sus fotos.
 Uso:  python app.py   (abre http://127.0.0.1:8765 en el navegador)
 """
 
+import copy
 import json
 import mimetypes
 import os
@@ -16,6 +17,7 @@ import sys
 import threading
 import unicodedata
 import webbrowser
+import zipfile
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,7 +34,23 @@ DATA_DIR = BASE / "data" / "impresiones"
 TRASH_DIR = BASE / "data" / "papelera"
 CATALOG_DIR = BASE / "data" / "catalogos"
 REGISTER_DIR = BASE / "data" / "registros"
+DATA_ROOT = BASE / "data"
+SETTINGS_FILE = DATA_ROOT / "ajustes.json"
+DEFAULT_BACKUP_DIR = BASE / "copias"
+BACKUP_PREFIX = "impresiones3d-"
 DATA_FILE = "datos.json"
+
+# Ajustes de la configuración general (se guardan en data/ajustes.json)
+DEFAULT_SETTINGS = {
+    "copias": {"carpeta": "", "conservar": 10, "automatica": True},
+    # El consumo, el precio y la vida útil de cada máquina están en el catálogo de Máquinas.
+    "costes": {
+        "activo": False,
+        "precioKWh": 0.20,          # €/kWh
+        "postprocesadoHora": None,  # €/h de pintura, montaje, acabados
+        "disenoHora": None,         # €/h de diseño
+    },
+}
 PHOTOS_DIR = "fotos"
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,120}$")
@@ -131,6 +149,113 @@ def open_field(data, campo, folder=False):
     if not path.exists():
         raise FileNotFoundError(f"No se encuentra: {path}")
     open_local(path, folder)
+
+
+# ------------------------------------------------------------------ ajustes
+
+def load_settings():
+    """Ajustes guardados, completados con los valores por defecto."""
+    settings = copy.deepcopy(DEFAULT_SETTINGS)
+    if SETTINGS_FILE.is_file():
+        saved = json.loads(SETTINGS_FILE.read_text(encoding="utf-8-sig"))
+        for section, values in saved.items():
+            if isinstance(values, dict) and section in settings:
+                settings[section].update(values)
+    return settings
+
+
+def clean_settings(data):
+    """Valida los ajustes recibidos: solo claves conocidas y tipos correctos."""
+    out = copy.deepcopy(DEFAULT_SETTINGS)
+    for section, defaults in DEFAULT_SETTINGS.items():
+        values = data.get(section) or {}
+        if not isinstance(values, dict):
+            raise ValueError(f"Ajustes no válidos: {section}")
+        for key in defaults:
+            if key not in values:
+                continue
+            v = values[key]
+            if key in ("activo", "automatica"):
+                out[section][key] = bool(v)
+            elif key == "carpeta":
+                out[section][key] = str(v or "").strip().strip('"')
+            elif key == "conservar":
+                out[section][key] = max(1, min(365, int(v or 1)))
+            else:  # números opcionales
+                if v in (None, ""):
+                    out[section][key] = None
+                else:
+                    num = float(v)
+                    if num < 0:
+                        raise ValueError(f"El valor de {key} no puede ser negativo")
+                    out[section][key] = num
+    return out
+
+
+# ---------------------------------------------------------- copias de seguridad
+
+def backup_dir(settings=None):
+    settings = settings or load_settings()
+    folder = settings["copias"]["carpeta"]
+    path = Path(folder).expanduser() if folder else DEFAULT_BACKUP_DIR
+    if not path.is_absolute():
+        path = BASE / path
+    path = path.resolve()
+    if path == DATA_ROOT.resolve() or DATA_ROOT.resolve() in path.parents:
+        raise ValueError("La carpeta de copias no puede estar dentro de la carpeta data")
+    return path
+
+
+def list_backups(settings=None):
+    folder = backup_dir(settings)
+    if not folder.is_dir():
+        return []
+    items = []
+    for f in sorted(folder.glob(f"{BACKUP_PREFIX}*.zip"), reverse=True):
+        st = f.stat()
+        items.append({"nombre": f.name, "bytes": st.st_size,
+                      "fecha": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")})
+    return items
+
+
+_backup_lock = threading.Lock()
+
+
+def make_backup(settings=None):
+    """Comprime data/ (y la configuración de campos) en un .zip fechado y borra las copias más antiguas."""
+    settings = settings or load_settings()
+    folder = backup_dir(settings)
+    with _backup_lock:
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{BACKUP_PREFIX}{datetime.now():%Y%m%d-%H%M%S}.zip"
+        tmp = folder / (name + ".tmp")
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+            for path in sorted(DATA_ROOT.rglob("*")):
+                if path.is_file() and not path.name.endswith(".tmp"):
+                    z.write(path, Path("data") / path.relative_to(DATA_ROOT))
+            if CONFIG_FILE.is_file():
+                z.write(CONFIG_FILE, Path("config") / CONFIG_FILE.name)
+        tmp.replace(folder / name)
+        # Conservar solo las N más recientes (únicamente ficheros creados por la app)
+        keep = settings["copias"]["conservar"]
+        for old in sorted(folder.glob(f"{BACKUP_PREFIX}*.zip"), reverse=True)[keep:]:
+            old.unlink()
+    return {"nombre": name, "carpeta": str(folder)}
+
+
+def auto_backup():
+    """Copia automática al arrancar, como mucho una al día."""
+    try:
+        settings = load_settings()
+        if not settings["copias"]["automatica"]:
+            return
+        today = f"{BACKUP_PREFIX}{datetime.now():%Y%m%d}-"
+        if any(b["nombre"].startswith(today) for b in list_backups(settings)):
+            return
+        result = make_backup(settings)
+        print(f"Copia de seguridad creada: {Path(result['carpeta']) / result['nombre']}")
+    except Exception as e:  # noqa: BLE001 - no debe impedir arrancar la app
+        print(f"AVISO: no se pudo hacer la copia de seguridad automática: {e}")
 
 
 def open_local(path, folder=False):
@@ -234,6 +359,28 @@ class Handler(BaseHTTPRequestHandler):
     def api(self, method, parts, query):
         if parts == ["config"] and method == "GET":
             return self.send_file(CONFIG_FILE)
+
+        # /api/ajustes  (configuración general)
+        if parts == ["ajustes"]:
+            if method == "GET":
+                return self.send_json({**load_settings(), "carpetaPorDefecto": str(DEFAULT_BACKUP_DIR)})
+            if method == "PUT":
+                settings = clean_settings(self.read_json())
+                backup_dir(settings)  # valida la carpeta
+                write_json(SETTINGS_FILE, settings)
+                return self.send_json({**settings, "carpetaPorDefecto": str(DEFAULT_BACKUP_DIR)})
+
+        # /api/copias  (copias de seguridad)
+        if parts == ["copias"]:
+            if method == "GET":
+                return self.send_json({"carpeta": str(backup_dir()), "copias": list_backups()})
+            if method == "POST":
+                return self.send_json(make_backup(), HTTPStatus.CREATED)
+        if parts == ["copias", "abrir"] and method == "POST":
+            folder = backup_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            open_local(folder)
+            return self.send_json({"ok": True})
 
         # /api/catalogos/<id>  y  /api/registros/<id>
         if parts[:1] and parts[0] in LIST_DIRS and len(parts) == 2:
@@ -367,6 +514,8 @@ def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     url = f"http://{HOST}:{PORT}/"
     print(f"Registro de impresiones 3D en {url}  (Ctrl+C para salir)")
+    if "--sin-copia" not in sys.argv:
+        threading.Thread(target=auto_backup, daemon=True).start()
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

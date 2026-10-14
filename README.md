@@ -35,7 +35,13 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 - **Informes**: resumen general, gastos, producción y ventas, con filtro por año y botón
   **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
   Cada impresión también tiene botón **PDF** para exportar su ficha.
-- **Catálogos**: impresoras (una marcada por defecto), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
+- **Configuración**:
+  - *Copias de seguridad*: carpeta de destino (p. ej. una carpeta en la nube), copias a conservar y copia
+    automática al arrancar (una al día como máximo). Cada copia es un .zip fechado con `data/` y `config/campos.json`.
+  - *Costes reales*: precio del kWh, postprocesado (€/h sobre pintura y montaje) y diseño (€/h).
+    La electricidad y la amortización salen de la **máquina de cada placa** (catálogo Máquinas: consumo en W,
+    precio y vida útil en horas). Cada impresión muestra su **coste real**.
+- **Catálogos**: máquinas (impresoras 3D, láser…, una marcada por defecto, con consumo, precio y vida útil), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
   (se eligen en la ficha de cada filamento).
 
 ## Cómo se calcula
@@ -55,10 +61,12 @@ data/catalogos/*.json              ← impresoras, accesorios y tipos de gasto
 data/registros/filamentos.json     ← filamentos
 data/registros/gastos.json         ← gastos
 data/registros/ventas.json         ← ventas
+data/ajustes.json                  ← configuración general
 data/papelera/                     ← lo que eliminas desde la app (recuperable)
+copias/                            ← copias de seguridad (carpeta por defecto)
 ```
 
-Para hacer una copia de seguridad basta con copiar la carpeta `data`. Esta carpeta está en `.gitignore`:
+Para restaurar una copia, descomprime el .zip en la carpeta de la app (sobrescribe `data/`). Esta carpeta está en `.gitignore`:
 tus datos nunca se suben al repositorio.
 
 ## Personalizar campos: `config/campos.json`
@@ -81,7 +89,7 @@ tus datos nunca se suben al repositorio.
 - `registros`: listados independientes como Gastos (`agruparPor` indica el campo del desglose).
   Para que aparezca en el menú, añade su enlace en `public/index.html`.
 
-Para arrancar en otro puerto: `python app.py --port 8800`.
+Para arrancar en otro puerto: `python app.py --port 8800`. Con `--sin-copia` no se hace la copia automática.
 
 Recarga la página después de editar la configuración. Si quitas un campo, los datos antiguos no se pierden:
 aparecen como "campo antiguo" en la ficha.

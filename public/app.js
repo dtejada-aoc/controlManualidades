@@ -12,6 +12,24 @@ let CONFIG = null;
 const CATALOGS = {}; // id → lista de elementos
 const PRINTS = {};   // id → { nombre, tot } (para los campos de tipo "impresion")
 const REGS = {};     // id de registro → lista (para los campos de tipo "registro", p. ej. filamentos)
+let AJUSTES = null;  // configuración general (copias de seguridad, costes reales)
+
+/**
+ * Tarifas de los ajustes de costes reales (solo las configuradas). El consumo y la
+ * amortización de cada máquina están en el catálogo de Máquinas.
+ */
+function costRates() {
+  const c = AJUSTES?.costes;
+  if (!c?.activo) return {};
+  const r = {};
+  for (const k of ["precioKWh", "postprocesadoHora", "disenoHora"]) if (Number(c[k]) > 0) r[k] = Number(c[k]);
+  return r;
+}
+
+const costsActive = () => !!AJUSTES?.costes?.activo;
+
+/** Campos que se muestran (los "ocultos" solo cuentan para los totales). */
+const visibleFields = (fields) => fields.filter((f) => !f.oculto);
 let formDirty = false;
 
 // ------------------------------------------------------------ utilidades
@@ -235,9 +253,20 @@ function evalFormula(expr, lookup) {
 /** Valor de un campo dentro de una fila (calcula las fórmulas y las sumas de listas). */
 function fieldValue(field, row) {
   if (field.formula) {
+    if (field.ajuste === "costes" && !costsActive()) return null;
     // "ceroSiFalta": campos que, vacíos, cuentan como 0 (p. ej. gramos desperdiciados)
     const zero = asArray(field.ceroSiFalta);
-    return evalFormula(field.formula, (k) => (isEmpty(row?.[k]) && zero.includes(k) ? 0 : row?.[k]));
+    // "datosDe": datos del elemento de catálogo elegido en la fila (p. ej. consumo y precio de la máquina)
+    const linked = field.datosDe
+      ? (CATALOGS[field.datosDe.catalogo] || []).find((c) => c.nombre === row?.[field.datosDe.campo]) || {}
+      : {};
+    const rates = field.ajuste === "costes" ? costRates() : {};
+    return evalFormula(field.formula, (k) => {
+      if (!isEmpty(row?.[k])) return row[k];
+      if (zero.includes(k)) return 0;
+      if (!isEmpty(linked[k])) return linked[k];
+      return rates[k];
+    });
   }
   if (field.sumaDe) {
     // Suma de campos de una lista anidada, p. ej. el coste de los filamentos de una placa
@@ -298,11 +327,14 @@ function computeTotals(item) {
     const v = item.general?.[k];
     return isEmpty(v) ? defaultValue(generalSection().campos.find((f) => f.id === k) || {}) : v;
   };
+  const rates = costRates();
   for (const t of totalDefs()) {
     if (!t.formula) continue;
+    if (t.ajuste === "costes" && !AJUSTES?.costes?.activo) continue; // costes reales desactivados
     if (asArray(t.requiere).some((k) => isEmpty(totals[k]))) continue;
+    if (t.requiereAlguno && asArray(t.requiereAlguno).every((k) => isEmpty(totals[k]))) continue;
     const v = evalFormula(t.formula, (k) =>
-      k in totals ? totals[k] : declared.has(k) ? 0 : general(k));
+      k in totals ? totals[k] : declared.has(k) ? 0 : k in rates ? rates[k] : general(k));
     if (v !== null) totals[t.id] = v;
   }
   return totals;
@@ -310,7 +342,7 @@ function computeTotals(item) {
 
 function sectionSubtotal(sec, rows) {
   const sum = {};
-  for (const field of sec.campos) {
+  for (const field of visibleFields(sec.campos)) {
     if (!NUMERIC.includes(field.tipo) || field.subtotal === false) continue;
     let s = null;
     for (const r of rows) {
@@ -340,7 +372,8 @@ async function viewList() {
 
   const gen = generalSection();
   const genCols = gen.campos.filter((f) => f.enListado && f.id !== "nombre");
-  const totCols = totalDefs().filter((t) => t.enListado);
+  // Columnas de totales: solo las que tienen algún valor (p. ej. el coste real si está activado)
+  const totCols = totalDefs().filter((t) => t.enListado && items.some((it) => !isEmpty(it._tot[t.id])));
   const isSumable = (t) => t.sumable !== false;
 
   const columns = [
@@ -363,7 +396,7 @@ async function viewList() {
     ${items.length ? `
       <div class="stats">${statTiles(statDefs, allTotals)}</div>
       <div class="toolbar">
-        <input type="search" id="q" placeholder="Buscar por nombre, material, impresora, notas…" value="${esc(listState.q)}">
+        <input type="search" id="q" placeholder="Buscar por nombre, máquina, notas…" value="${esc(listState.q)}">
       </div>
       <div class="card table-wrap"><table>
         <thead><tr><th style="width:60px"></th>${columns.map((c) => `
@@ -445,7 +478,7 @@ async function viewDetail(id) {
   }
 
   const renderKv = (sec, obj, skip = []) => {
-    const fields = sec.campos.filter((f) => !skip.includes(f.id) && !isEmpty(fieldValue(f, obj)));
+    const fields = visibleFields(sec.campos).filter((f) => !skip.includes(f.id) && !isEmpty(fieldValue(f, obj)));
     const extra = Object.keys(obj || {}).filter((k) => !sec.campos.some((f) => f.id === k) && !isEmpty(obj[k]));
     if (!fields.length && !extra.length) return `<p class="muted empty-note" style="margin:0">Sin datos</p>`;
     return `<dl class="kv">
@@ -463,7 +496,7 @@ async function viewDetail(id) {
 
   const renderTable = (sec, rows) => {
     if (!rows.length) return `<p class="muted empty-note" style="margin:0">Ninguno</p>`;
-    const fields = sec.campos.filter((f) => rows.some((r) => !isEmpty(fieldValue(f, r))));
+    const fields = visibleFields(sec.campos).filter((f) => rows.some((r) => !isEmpty(fieldValue(f, r))));
     const isNum = (f) => NUMERIC.includes(f.tipo);
     const sub = sectionSubtotal(sec, rows);
     return `<div class="table-wrap"><table>
@@ -813,7 +846,7 @@ async function viewForm(id) {
   // --- cálculos en vivo
   const updateSummary = () => {
     const tot = computeTotals(draft);
-    const show = ["coste", "costeUnidad"]
+    const show = ["coste", "costeUnidad", "costeReal", "costeRealUnidad"]
       .map((k) => totalDefs().find((t) => t.id === k)).filter((t) => t && !isEmpty(tot[t.id]));
     document.getElementById("summary").innerHTML = show.map((t) =>
       `<span><span class="muted">${esc(t.etiqueta)}:</span> <strong>${fmtValueHtml(t, tot[t.id])}</strong></span>`).join("");
@@ -840,7 +873,7 @@ async function viewForm(id) {
     const body = app.querySelector(`[data-sec="${sec.id}"] .sec-body`);
     if (!sec.repetible) {
       draft[sec.id] = draft[sec.id] || {};
-      body.innerHTML = `<div class="form-grid">${sec.campos.map((f) =>
+      body.innerHTML = `<div class="form-grid">${visibleFields(sec.campos).map((f) =>
         fieldBlock(f, draft[sec.id][f.id], `${sec.id}.${f.id}`)).join("")}</div>`;
       updateComputed(sec);
       return;
@@ -856,7 +889,7 @@ async function viewForm(id) {
               <button type="button" class="btn btn-sm btn-ghost btn-danger" data-act="rm" data-i="${i}">Quitar</button>
             </div>
           </div>
-          <div class="form-grid">${sec.campos.map((f) => fieldBlock(f, row[f.id], `${sec.id}.${i}.${f.id}`)).join("")}</div>
+          <div class="form-grid">${visibleFields(sec.campos).map((f) => fieldBlock(f, row[f.id], `${sec.id}.${i}.${f.id}`)).join("")}</div>
         </div>`).join("")}
       <button type="button" class="btn" data-act="add">+ Añadir ${esc((sec.elemento || "elemento").toLowerCase())}</button>
       <p class="subtotal"></p>
@@ -1011,7 +1044,7 @@ async function viewCatalogs() {
             <button class="btn btn-sm" data-sort="${esc(c.id)}" title="Ordenar alfabéticamente por nombre">Ordenar A→Z</button>
             <button class="btn btn-primary btn-sm" data-save="${esc(c.id)}">Guardar ${esc(c.titulo.toLowerCase())}</button>
           </div></div>
-        <p class="muted small cat-hint">El orden de esta lista es el de los desplegables. Arrastra ⠿ o usa ↑ ↓ para cambiarlo.</p>
+        <p class="muted small cat-hint">${c.descripcion ? `${esc(c.descripcion)} ` : ""}El orden de esta lista es el de los desplegables. Arrastra ⠿ o usa ↑ ↓ para cambiarlo.</p>
         <div class="cat-body"></div>
       </div>`).join("")}</div>
   `;
@@ -1241,6 +1274,7 @@ async function router() {
   try {
     if (!CONFIG) {
       CONFIG = await api("GET", "/api/config");
+      AJUSTES = await api("GET", "/api/ajustes");
       await loadCatalogs();
     }
     if (route === "nueva") await viewForm(null);
@@ -1248,6 +1282,7 @@ async function router() {
     else if (route === "i" && param) await viewDetail(decodeURIComponent(param));
     else if (route === "catalogos") await viewCatalogs();
     else if (route === "informes") await viewReports(param);
+    else if (route === "configuracion") await viewSettings();
     else if ((CONFIG.registros || []).some((r) => r.id === route)) {
       await viewRegister(CONFIG.registros.find((r) => r.id === route), hash.split("?")[1] || "");
     } else await viewList();

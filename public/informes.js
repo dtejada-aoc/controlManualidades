@@ -217,7 +217,7 @@ function reportResumen({ items, gastos }, charts) {
       ${chartBox("gastosTiempo", reportState.year ? `Inversión por mes (${reportState.year})` : "Inversión por año")}
       ${block("Inversión por tipo", hBars(porTipo, { total: inversion }))}
     </div>
-    ${charts.acumulado ? chartBox("acumulado", "Inversión acumulada", "Evolución mensual de todo lo invertido en la impresora y su material.") : ""}
+    ${charts.acumulado ? chartBox("acumulado", "Inversión acumulada", "Evolución mensual de todo lo invertido en las máquinas y su material.") : ""}
     ${block("Impresiones con más coste", hBars(topCoste), "Coste total de producción; a la derecha, el coste por unidad.")}
   `;
 }
@@ -362,7 +362,15 @@ function reportProduccion({ items }, charts) {
       { label: "Filamento usado", value: grams(t("gramosTotal")) },
       { label: "Desperdicio", value: grams(t("gramosDesperdicio")), sub: pct(t("gramosTotal") ? (t("gramosDesperdicio") / t("gramosTotal")) * 100 : null) },
       { label: "Coste de producción", value: money(t("coste")), sub: `${money(t("coste") / its.length)} por impresión` },
+      ...(t("costeReal") ? [{ label: "Coste real", value: money(t("costeReal")), sub: `${money(t("costeReal") / its.length)} por impresión` }] : []),
     ])}
+    ${t("costeReal") ? block("Desglose del coste real", hBars([
+      { label: "Material y accesorios", value: t("coste") },
+      { label: "Electricidad", value: t("costeElectricidad") },
+      { label: "Amortización máquinas", value: t("costeAmortizacion") },
+      { label: "Postprocesado", value: t("costePostprocesado") },
+      { label: "Diseño", value: t("costeDiseno") },
+    ].filter((e) => e.value > 0), { total: t("costeReal") }), "Según las tarifas de Configuración → Costes reales.") : ""}
     <div class="report-grid">
       ${block("Filamento por impresión", stackedBars(fil, { labels: ["Modelo", "Desperdicio"] }))}
       ${block("Tiempo de impresión", hBars(tiempo, { fmt: hours }))}
@@ -374,7 +382,7 @@ function reportProduccion({ items }, charts) {
       <tbody>${its.map((x) => {
         const accCost = asArray(x.accesorios).reduce((s, r) => s + (Number(costeF ? fieldValue(costeF, r) : r.coste) || 0), 0);
         return `<tr><td>${esc(fmtDate(x.general?.fecha))}</td><td><strong>${esc(printName(x))}</strong>
-          <div class="muted small">${esc([[...(tiposPorImpresion[x.id] || [])].join("/"), x.general?.impresora, x.general?.estado].filter(Boolean).join(" · "))}</div></td>
+          <div class="muted small">${esc([[...(tiposPorImpresion[x.id] || [])].join("/"), [...new Set(asArray(x.placas).map((p) => p.maquina).filter(Boolean))].join(", "), x.general?.estado].filter(Boolean).join(" · "))}</div></td>
           <td class="num">${asArray(x.placas).length}</td><td class="num">${esc(hours(x._tot.tiempoImpresion))}</td>
           <td class="num">${esc(grams(x._tot.gramosTotal || 0))}</td><td class="num">${esc(pct(x._tot.porcentajeDesperdicio))}</td>
           <td class="num">${accCost ? esc(money(accCost)) : "—"}</td><td class="num">${esc(money(x._tot.coste))}</td>

@@ -3,16 +3,22 @@
 
   "catalogos": [
     {
-      "id": "impresoras",
-      "titulo": "Impresoras",
-      "elemento": "Impresora",
+      "id": "maquinas",
+      "titulo": "Máquinas",
+      "elemento": "Máquina",
+      "descripcion": "Impresoras 3D, cortadoras láser… El consumo y la amortización se usan para el coste real de cada placa.",
       "campos": [
-        { "id": "nombre",        "etiqueta": "Nombre",      "tipo": "texto", "obligatorio": true },
-        { "id": "notas",         "etiqueta": "Notas",       "tipo": "texto" },
-        { "id": "predeterminada","etiqueta": "Por defecto", "tipo": "booleano", "unico": true }
+        { "id": "nombre",        "etiqueta": "Nombre",       "tipo": "texto", "obligatorio": true },
+        { "id": "tipo",          "etiqueta": "Tipo",         "tipo": "seleccion",
+          "opciones": ["Impresora 3D", "Impresora de resina", "Cortadora láser", "Grabadora láser", "CNC", "Otra"] },
+        { "id": "consumoW",      "etiqueta": "Consumo medio", "tipo": "numero", "unidad": "W" },
+        { "id": "precio",        "etiqueta": "Precio",        "tipo": "moneda" },
+        { "id": "vidaUtilHoras", "etiqueta": "Vida útil",     "tipo": "numero", "unidad": "h" },
+        { "id": "notas",         "etiqueta": "Notas",         "tipo": "texto" },
+        { "id": "predeterminada","etiqueta": "Por defecto",   "tipo": "booleano", "unico": true }
       ],
       "inicial": [
-        { "nombre": "BambuLab A1", "predeterminada": true }
+        { "nombre": "Mi impresora 3D", "tipo": "Impresora 3D", "consumoW": 100, "vidaUtilHoras": 3000, "predeterminada": true }
       ]
     },
     {
@@ -95,7 +101,7 @@
       "id": "gastos",
       "titulo": "Gastos",
       "elemento": "Gasto",
-      "descripcion": "Compras de material de apoyo para la impresora.",
+      "descripcion": "Compras de material de apoyo para las máquinas.",
       "agruparPor": "tipo",
       "campos": [
         { "id": "fecha",       "etiqueta": "Fecha de compra", "tipo": "fecha", "porDefecto": "hoy", "enListado": true },
@@ -151,7 +157,27 @@
     { "id": "gramosDesperdicio","etiqueta": "Filamento desperdiciado", "tipo": "numero", "unidad": "g", "grupo": "Filamento" },
     { "id": "gramosTotal",      "etiqueta": "Filamento total",      "tipo": "numero", "unidad": "g", "grupo": "Filamento", "resumen": true },
     { "id": "porcentajeDesperdicio", "etiqueta": "% desperdicio",   "tipo": "porcentaje", "grupo": "Filamento",
-      "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false }
+      "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false },
+
+    { "id": "tiempoDiseno",       "etiqueta": "Tiempo de diseño",       "tipo": "duracion", "grupo": "Producción" },
+    { "id": "tiempoPostprocesado","etiqueta": "Tiempo de montaje",      "tipo": "duracion", "grupo": "Producción" },
+
+    { "id": "costeElectricidad",  "etiqueta": "Electricidad",           "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "ayuda": "Suma de las placas: tiempo × consumo de su máquina × precio del kWh" },
+    { "id": "costeAmortizacion",  "etiqueta": "Amortización máquinas",  "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "ayuda": "Suma de las placas: tiempo × precio de su máquina ÷ vida útil" },
+    { "id": "costePostprocesado", "etiqueta": "Postprocesado",          "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "formula": "(tiempoPintura + tiempoPostprocesado) / 60 * postprocesadoHora", "requiereAlguno": ["tiempoPintura", "tiempoPostprocesado"],
+      "ayuda": "Pintura + montaje y acabados" },
+    { "id": "costeDiseno",        "etiqueta": "Diseño",                 "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "formula": "tiempoDiseno / 60 * disenoHora", "requiere": ["tiempoDiseno"] },
+    { "id": "costeReal",          "etiqueta": "Coste real",             "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "enListado": true, "resumen": true,
+      "formula": "coste + costeElectricidad + costeAmortizacion + costePostprocesado + costeDiseno",
+      "requiereAlguno": ["costeElectricidad", "costeAmortizacion", "costePostprocesado", "costeDiseno"],
+      "ayuda": "Material y accesorios + electricidad + amortización + postprocesado + diseño" },
+    { "id": "costeRealUnidad",    "etiqueta": "Coste real por unidad",  "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
+      "enListado": true, "formula": "costeReal / unidades", "requiere": ["costeReal"], "sumable": false }
   ],
 
   "secciones": [
@@ -166,7 +192,6 @@
           "opciones": ["Pendiente", "Imprimiendo", "Impreso", "Pintando", "Terminado", "Fallido"], "enListado": true },
         { "id": "unidades", "etiqueta": "Unidades obtenidas", "tipo": "numero", "porDefecto": 1, "enListado": true,
           "ayuda": "Piezas iguales que salen de esta impresión (para el coste por unidad)" },
-        { "id": "impresora","etiqueta": "Impresora",         "tipo": "catalogo", "catalogo": "impresoras" },
         { "id": "enlace",   "etiqueta": "Modelo (web o fichero)", "tipo": "enlace",
           "ayuda": "Una URL o la ruta del fichero .3mf; desde la ficha podrás abrirlo" },
         { "id": "notas",    "etiqueta": "Notas",             "tipo": "textoLargo" }
@@ -180,7 +205,14 @@
       "inicial": 1,
       "campos": [
         { "id": "nombre",            "etiqueta": "Descripción",            "tipo": "texto" },
+        { "id": "maquina",           "etiqueta": "Máquina",                "tipo": "catalogo", "catalogo": "maquinas" },
         { "id": "tiempo",            "etiqueta": "Tiempo de impresión",    "tipo": "duracion", "total": "tiempoImpresion" },
+        { "id": "costeElectricidad", "etiqueta": "Electricidad",           "tipo": "moneda", "oculto": true, "ajuste": "costes",
+          "formula": "tiempo / 60 * consumoW / 1000 * precioKWh", "datosDe": { "catalogo": "maquinas", "campo": "maquina" },
+          "total": "costeElectricidad" },
+        { "id": "costeAmortizacion", "etiqueta": "Amortización",           "tipo": "moneda", "oculto": true, "ajuste": "costes",
+          "formula": "tiempo / 60 * precio / vidaUtilHoras", "datosDe": { "catalogo": "maquinas", "campo": "maquina" },
+          "total": "costeAmortizacion" },
         { "id": "correcta",          "etiqueta": "Impresión correcta",     "tipo": "booleano", "porDefecto": true },
         { "id": "gramos",            "etiqueta": "Filamento usado",        "tipo": "numero", "unidad": "g",
           "sumaDe": { "lista": "filamentos", "campos": ["gramosModelo", "gramosDesperdicio"] } },
@@ -226,6 +258,17 @@
         { "id": "materiales","etiqueta": "Pinturas / materiales",  "tipo": "texto" },
         { "id": "coste",     "etiqueta": "Coste de materiales",    "tipo": "moneda", "total": "coste" },
         { "id": "notas",     "etiqueta": "Notas de acabado",       "tipo": "textoLargo" }
+      ]
+    },
+    {
+      "id": "manoObra",
+      "titulo": "Diseño y montaje",
+      "repetible": false,
+      "campos": [
+        { "id": "tiempoDiseno",  "etiqueta": "Tiempo de diseño",            "tipo": "duracion", "total": "tiempoDiseno",
+          "ayuda": "Modelado o adaptación del modelo. Déjalo vacío si es un modelo descargado sin cambios" },
+        { "id": "tiempoMontaje", "etiqueta": "Tiempo de montaje y acabados", "tipo": "duracion", "total": "tiempoPostprocesado",
+          "ayuda": "Montaje, lijado, pegado, limpieza de soportes… (la pintura va en su apartado)" }
       ]
     }
   ]

@@ -19,3 +19,6 @@ desktop.ini
 
 # Copias comprimidas del proyecto (pueden incluir data/)
 *.zip
+
+# Copias de seguridad (carpeta por defecto)
+copias/
