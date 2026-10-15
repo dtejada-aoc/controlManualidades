@@ -386,6 +386,20 @@ function sectionSubtotal(sec, rows) {
   return sum;
 }
 
+/** Indicadores de una impresión agrupados (Producción, Filamento, Coste real…), solo los que tienen valor. */
+function totalsGroupsHtml(tot) {
+  const groups = [];
+  for (const t of totalDefs().filter((t) => !isEmpty(tot[t.id]) && !t.oculto)) {
+    const g = t.grupo || "";
+    let entry = groups.find((x) => x.name === g);
+    if (!entry) groups.push((entry = { name: g, defs: [] }));
+    entry.defs.push(t);
+  }
+  return groups.map((g) => `
+    ${g.name ? `<h3 class="group-title">${esc(g.name)}</h3>` : ""}
+    <div class="stats">${statTiles(g.defs, tot)}</div>`).join("");
+}
+
 function statTiles(defs, values) {
   return defs.map((t) => `
     <div class="card stat" ${t.ayuda ? `title="${esc(t.ayuda)}"` : ""}>
@@ -500,15 +514,6 @@ async function viewDetail(id) {
     ? (await api("GET", "/api/registros/ventas")).filter((v) => v.impresion === it.id) : [];
   const knownKeys = new Set(["id", "fotos", "creado", "modificado", ...sections().map((s) => s.id)]);
 
-  // Indicadores agrupados (Producción, Filamento, Ventas…)
-  const groups = [];
-  for (const t of totalDefs().filter((t) => !isEmpty(tot[t.id]))) {
-    const g = t.grupo || "";
-    let entry = groups.find((x) => x.name === g);
-    if (!entry) groups.push((entry = { name: g, defs: [] }));
-    entry.defs.push(t);
-  }
-
   const renderKv = (sec, obj, skip = []) => {
     const fields = visibleFields(sec.campos).filter((f) => !skip.includes(f.id) && !isEmpty(fieldValue(f, obj)));
     const extra = Object.keys(obj || {}).filter((k) => !sec.campos.some((f) => f.id === k) && !isEmpty(obj[k]));
@@ -565,9 +570,7 @@ async function viewDetail(id) {
       </div>
     </div>
 
-    ${groups.map((g) => `
-      ${g.name ? `<h3 class="group-title">${esc(g.name)}</h3>` : ""}
-      <div class="stats">${statTiles(g.defs, tot)}</div>`).join("")}
+    ${totalsGroupsHtml(tot)}
 
     ${it.fotos.length ? `<div class="card card-pad section"><h2>Fotos</h2>
       <div class="gallery">${it.fotos.map((f, i) => `
@@ -867,6 +870,10 @@ async function viewForm(id) {
         </div>
         <div class="photo-grid" id="photos"></div>
       </div>
+      <div class="card card-pad section form-totals">
+        <h2>Resumen de costes</h2>
+        <div id="totals-live" style="margin-top:12px"></div>
+      </div>
       <div class="form-actions">
         <div class="form-summary" id="summary"></div>
         <a class="btn" href="${editing ? `#/i/${esc(id)}` : "#/"}" id="cancel">Cancelar</a>
@@ -882,6 +889,9 @@ async function viewForm(id) {
       .map((k) => totalDefs().find((t) => t.id === k)).filter((t) => t && !isEmpty(tot[t.id]));
     document.getElementById("summary").innerHTML = show.map((t) =>
       `<span><span class="muted">${esc(t.etiqueta)}:</span> <strong>${fmtValueHtml(t, tot[t.id])}</strong></span>`).join("");
+
+    document.getElementById("totals-live").innerHTML = totalsGroupsHtml(tot) ||
+      `<p class="muted" style="margin:0">Rellena las placas (tiempo y filamentos), los accesorios y los tiempos de montaje para ver el coste.</p>`;
   };
   const updateComputed = (sec) => {
     const body = app.querySelector(`[data-sec="${sec.id}"]`);
