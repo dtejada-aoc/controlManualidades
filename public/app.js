@@ -29,7 +29,13 @@ function costRates() {
 const costsActive = () => !!AJUSTES?.costes?.activo;
 
 /** Campos que se muestran (los "ocultos" solo cuentan para los totales). */
-const visibleFields = (fields) => fields.filter((f) => !f.oculto);
+const visibleFields = (fields) => fields.filter((f) => !f.oculto && (f.ajuste !== "costes" || costsActive()));
+
+/** Secciones de la impresión que se muestran (la de fallos solo con los costes reales activados). */
+const shownSections = () => sections().filter((s) => s.ajuste !== "costes" || costsActive());
+
+/** Valor de la configuración general por ruta: "fallos.generalPct". */
+const ajusteValue = (path) => path.split(".").reduce((o, k) => o?.[k], AJUSTES);
 let formDirty = false;
 
 // ------------------------------------------------------------ utilidades
@@ -190,6 +196,7 @@ const SALE_PARTS = [
   { flag: "incluirElectricidad", total: "costeElectricidad", etiqueta: "electricidad", def: true },
   { flag: "incluirAmortizacion", total: "costeAmortizacion", etiqueta: "amortización", def: true },
   { flag: "incluirPostprocesado", total: "costePostprocesado", etiqueta: "postprocesado", def: true },
+  { flag: "incluirFallos", total: "costeFallos", etiqueta: "fallos", def: true },
   { flag: "incluirDiseno", total: "costeDiseno", etiqueta: "diseño", def: false },
 ];
 
@@ -319,6 +326,7 @@ function fieldValue(field, row) {
 const listFieldById = (id) => sections().flatMap((s) => s.campos).find((f) => f.tipo === "lista" && f.id === id);
 
 function defaultValue(field) {
+  if (field.porDefectoAjuste) return ajusteValue(field.porDefectoAjuste) ?? undefined;
   if (field.porDefecto === "hoy") return today();
   if (field.porDefecto !== undefined) return field.porDefecto;
   if (field.tipo === "catalogo") return catalogDefault(field.catalogo)?.nombre;
@@ -360,7 +368,12 @@ function computeTotals(item) {
     return isEmpty(v) ? defaultValue(generalSection().campos.find((f) => f.id === k) || {}) : v;
   };
   const rates = costRates();
+  let failuresDone = false;
   for (const t of totalDefs()) {
+    if (t.calculo === "fallos" && !failuresDone && costsActive()) {
+      Object.assign(totals, computeFailures(item, totals));
+      failuresDone = true;
+    }
     if (!t.formula) continue;
     if (t.ajuste === "costes" && !AJUSTES?.costes?.activo) continue; // costes reales desactivados
     if (asArray(t.requiere).some((k) => isEmpty(totals[k]))) continue;
@@ -370,6 +383,46 @@ function computeTotals(item) {
     if (v !== null) totals[t.id] = v;
   }
   return totals;
+}
+
+/**
+ * Coste de los fallos, por tipo. Cada tipo se aplica si su casilla está marcada en la
+ * impresión (o en la placa); el % es el de la impresión o, si está vacío, el de Configuración.
+ *  - general: filamento + electricidad + amortización de toda la impresión
+ *  - placas: lo mismo, pero solo de cada placa marcada
+ *  - postprocesado / diseño: sobre su coste
+ */
+function computeFailures(item, totals) {
+  const f = item.fallos || {};
+  const pct = (own, key) => {
+    const v = isEmpty(own) ? ajusteValue(`fallos.${key}Pct`) : own;
+    return Number(v) > 0 ? Number(v) / 100 : 0;
+  };
+  const out = {};
+  const base = (totals.costeFilamento || 0) + (totals.costeElectricidad || 0) + (totals.costeAmortizacion || 0);
+  if (f.general && base) out.fallosGeneral = base * pct(f.pGeneral, "general");
+  // Placas marcadas: su coste de filamento + su electricidad + su amortización
+  const placas = sectionById("placas");
+  if (placas) {
+    const fieldOf = (id) => placas.campos.find((x) => x.id === id);
+    const lista = placas.campos.find((x) => x.tipo === "lista");
+    const filCost = lista?.campos.find((x) => x.id === "coste");
+    let s = 0;
+    for (const p of asArray(item.placas)) {
+      if (!p?.fallo) continue;
+      const fil = asArray(p[lista?.id]).reduce((a, sub) => a + (Number(filCost ? fieldValue(filCost, sub) : 0) || 0), 0);
+      const luz = Number(fieldOf("costeElectricidad") ? fieldValue(fieldOf("costeElectricidad"), p) : 0) || 0;
+      const amort = Number(fieldOf("costeAmortizacion") ? fieldValue(fieldOf("costeAmortizacion"), p) : 0) || 0;
+      s += (fil + luz + amort) * pct(p.pFallo, "placa");
+    }
+    if (s) out.fallosPlacas = s;
+  }
+  if (f.postprocesado && totals.costePostprocesado) out.fallosPostprocesado = totals.costePostprocesado * pct(f.pPostprocesado, "postprocesado");
+  if (f.diseno && totals.costeDiseno) out.fallosDiseno = totals.costeDiseno * pct(f.pDiseno, "diseno");
+  for (const k of Object.keys(out)) if (!out[k]) delete out[k];
+  const total = Object.values(out).reduce((a, b) => a + b, 0);
+  if (total) out.costeFallos = total;
+  return out;
 }
 
 function sectionSubtotal(sec, rows) {
@@ -545,7 +598,7 @@ async function viewDetail(id) {
     </table></div>`;
   };
 
-  const otherSections = sections().filter((s) => s !== gen);
+  const otherSections = shownSections().filter((s) => s !== gen);
   const extraTop = Object.keys(it).filter((k) => !knownKeys.has(k) && !isEmpty(it[k]));
   const unidades = it.general?.unidades;
 
@@ -656,7 +709,9 @@ function fieldInput(field, value, path) {
     case "numero":
     case "moneda": {
       const unit = field.tipo === "moneda" ? `${CONFIG.moneda || "€"}${field.unidad || ""}` : field.unidad;
-      const input = `<input type="number" inputmode="decimal" step="${field.tipo === "moneda" ? "0.01" : "any"}" min="0" ${attrs} value="${esc(value)}">`;
+      const ph = field.placeholderAjuste ? ajusteValue(field.placeholderAjuste) : null;
+      const input = `<input type="number" inputmode="decimal" step="${field.tipo === "moneda" ? "0.01" : "any"}" min="0" ${attrs} value="${esc(value)}"
+        ${!isEmpty(ph) ? `placeholder="${esc(numFmt.format(ph))} (por defecto)"` : ""}>`;
       return unit ? `<div class="with-unit">${input}<span>${esc(unit)}</span></div>` : input;
     }
     case "duracion": {
@@ -857,7 +912,7 @@ async function viewForm(id) {
     <a class="back" href="${editing ? `#/i/${esc(id)}` : "#/"}">← ${editing ? "Volver a la impresión" : "Volver al listado"}</a>
     <div class="page-head"><h1>${editing ? "Editar impresión" : "Nueva impresión"}</h1></div>
     <form id="form" novalidate>
-      ${sections().map((sec) => `
+      ${shownSections().map((sec) => `
         <div class="card card-pad section" data-sec="${esc(sec.id)}">
           <h2>${esc(sec.titulo)}</h2>
           <div class="sec-body" style="margin-top:12px"></div>
@@ -966,7 +1021,7 @@ async function viewForm(id) {
       renderSection(sec);
     }));
   };
-  sections().forEach(renderSection);
+  shownSections().forEach(renderSection);
 
   const form = document.getElementById("form");
   bindInputs(form, draft, (holder, e) => {

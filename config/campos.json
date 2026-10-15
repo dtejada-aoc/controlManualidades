@@ -139,13 +139,14 @@
         { "id": "incluirElectricidad", "etiqueta": "Incluir electricidad",  "tipo": "booleano", "porDefecto": true,  "ajuste": "costes", "recalcula": "impresion" },
         { "id": "incluirAmortizacion", "etiqueta": "Incluir amortización",  "tipo": "booleano", "porDefecto": true,  "ajuste": "costes", "recalcula": "impresion" },
         { "id": "incluirPostprocesado","etiqueta": "Incluir postprocesado", "tipo": "booleano", "porDefecto": true,  "ajuste": "costes", "recalcula": "impresion" },
+        { "id": "incluirFallos",       "etiqueta": "Incluir fallos",        "tipo": "booleano", "porDefecto": true,  "ajuste": "costes", "recalcula": "impresion" },
         { "id": "incluirDiseno",       "etiqueta": "Incluir diseño",        "tipo": "booleano", "porDefecto": false, "ajuste": "costes", "recalcula": "impresion",
           "ayuda": "El diseño se hace una vez: inclúyelo solo si esta venta debe pagarlo" },
         { "id": "importe",      "etiqueta": "Importe",                     "tipo": "moneda", "formula": "cantidad * precioUnidad", "total": true, "enListado": true },
         { "id": "coste",        "etiqueta": "Coste",                       "tipo": "moneda", "formula": "cantidad * costeUnidad" },
         { "id": "beneficio",    "etiqueta": "Beneficio",                   "tipo": "moneda", "formula": "cantidad * (precioUnidad - costeUnidad)", "signo": true, "enListado": true },
         { "id": "canal",        "etiqueta": "Canal",                       "tipo": "seleccion", "enListado": true,
-          "opciones": ["En mano", "Wallapop", "Etsy", "Vinted", "Feria", "Encargo", "Otro"] },
+          "opciones": ["En mano", "Tienda", "Wallapop", "Vinted", "WhatsApp", "Etsy", "Feria", "Encargo", "Otro"] },
         { "id": "cliente",      "etiqueta": "Cliente",                     "tipo": "texto" },
         { "id": "notas",        "etiqueta": "Notas",                       "tipo": "texto" }
       ]
@@ -164,6 +165,7 @@
     { "id": "porcentajeDesperdicio", "etiqueta": "% desperdicio",   "tipo": "porcentaje", "grupo": "Filamento",
       "formula": "gramosDesperdicio / gramosTotal * 100", "requiere": ["gramosTotal"], "sumable": false },
 
+    { "id": "costeFilamento",     "etiqueta": "Coste de filamento",     "tipo": "moneda",   "grupo": "Producción" },
     { "id": "tiempoDiseno",       "etiqueta": "Tiempo de diseño",       "tipo": "duracion", "grupo": "Producción" },
     { "id": "tiempoPostprocesado","etiqueta": "Tiempo de montaje",      "tipo": "duracion", "grupo": "Producción" },
 
@@ -176,11 +178,21 @@
       "ayuda": "Pintura + montaje y acabados" },
     { "id": "costeDiseno",        "etiqueta": "Diseño",                 "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
       "formula": "tiempoDiseno / 60 * disenoHora", "requiere": ["tiempoDiseno"] },
+    { "id": "fallosGeneral",      "etiqueta": "Fallos de impresión",    "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes", "calculo": "fallos",
+      "ayuda": "% de impresión general sobre filamento, electricidad y amortización de toda la impresión" },
+    { "id": "fallosPlacas",       "etiqueta": "Fallos de placas",       "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes", "calculo": "fallos",
+      "ayuda": "Suma de las placas marcadas: % sobre su filamento, electricidad y amortización" },
+    { "id": "fallosPostprocesado","etiqueta": "Fallos de postprocesado","tipo": "moneda", "grupo": "Coste real", "ajuste": "costes", "calculo": "fallos",
+      "ayuda": "% sobre el coste de postprocesado (pintura y montaje)" },
+    { "id": "fallosDiseno",       "etiqueta": "Fallos de diseño",       "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes", "calculo": "fallos",
+      "ayuda": "% sobre el coste de diseño" },
+    { "id": "costeFallos",        "etiqueta": "Fallos",                 "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes", "calculo": "fallos",
+      "oculto": true, "ayuda": "Total de fallos" },
     { "id": "costeReal",          "etiqueta": "Coste real",             "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
       "enListado": true, "resumen": true,
-      "formula": "coste + costeElectricidad + costeAmortizacion + costePostprocesado + costeDiseno",
-      "requiereAlguno": ["costeElectricidad", "costeAmortizacion", "costePostprocesado", "costeDiseno"],
-      "ayuda": "Material y accesorios + electricidad + amortización + postprocesado + diseño" },
+      "formula": "coste + costeElectricidad + costeAmortizacion + costePostprocesado + costeDiseno + costeFallos",
+      "requiereAlguno": ["costeElectricidad", "costeAmortizacion", "costePostprocesado", "costeDiseno", "costeFallos"],
+      "ayuda": "Material y accesorios + electricidad + amortización + postprocesado + diseño + fallos" },
     { "id": "costeRealUnidad",    "etiqueta": "Coste real por unidad",  "tipo": "moneda", "grupo": "Coste real", "ajuste": "costes",
       "enListado": true, "formula": "costeReal / unidades", "requiere": ["costeReal"], "sumable": false }
   ],
@@ -219,6 +231,9 @@
           "formula": "tiempo / 60 * precio / vidaUtilHoras", "datosDe": { "catalogo": "maquinas", "campo": "maquina" },
           "total": "costeAmortizacion" },
         { "id": "correcta",          "etiqueta": "Impresión correcta",     "tipo": "booleano", "porDefecto": true },
+        { "id": "fallo",             "etiqueta": "Fallo de placa",         "tipo": "booleano", "porDefectoAjuste": "fallos.placaMarcada", "ajuste": "costes",
+          "ayuda": "Placa delicada: aplica el % sobre su filamento, electricidad y amortización" },
+        { "id": "pFallo",            "etiqueta": "% fallo de placa",       "tipo": "numero", "unidad": "%", "placeholderAjuste": "fallos.placaPct", "ajuste": "costes" },
         { "id": "gramos",            "etiqueta": "Filamento usado",        "tipo": "numero", "unidad": "g",
           "sumaDe": { "lista": "filamentos", "campos": ["gramosModelo", "gramosDesperdicio"] } },
         { "id": "coste",             "etiqueta": "Coste de material",      "tipo": "moneda",
@@ -236,7 +251,7 @@
             { "id": "precioKg",          "etiqueta": "Precio",        "tipo": "moneda", "unidad": "/kg", "subtotal": false },
             { "id": "coste",             "etiqueta": "Coste",         "tipo": "moneda",
               "formula": "(gramosModelo + gramosDesperdicio) * precioKg / 1000", "ceroSiFalta": ["gramosModelo", "gramosDesperdicio"],
-              "total": "coste" }
+              "total": ["coste", "costeFilamento"] }
           ] }
       ]
     },
@@ -274,6 +289,24 @@
           "ayuda": "Modelado o adaptación del modelo. Déjalo vacío si es un modelo descargado sin cambios" },
         { "id": "tiempoMontaje", "etiqueta": "Tiempo de montaje y acabados", "tipo": "duracion", "total": "tiempoPostprocesado",
           "ayuda": "Montaje, lijado, pegado, limpieza de soportes… (la pintura va en su apartado)" }
+      ]
+    },
+    {
+      "id": "fallos",
+      "titulo": "Tasa de fallos",
+      "repetible": false,
+      "ajuste": "costes",
+      "descripcion": "Marca los fallos que quieres aplicar. Si dejas el % vacío se usa el de Configuración.",
+      "campos": [
+        { "id": "general",        "etiqueta": "Impresión general",   "tipo": "booleano", "porDefectoAjuste": "fallos.generalMarcada",
+          "ayuda": "Repetir toda la impresión: filamento, electricidad y amortización de todas las placas" },
+        { "id": "pGeneral",       "etiqueta": "% impresión general", "tipo": "numero", "unidad": "%", "placeholderAjuste": "fallos.generalPct" },
+        { "id": "postprocesado",  "etiqueta": "Postprocesado",       "tipo": "booleano", "porDefectoAjuste": "fallos.postprocesadoMarcada",
+          "ayuda": "Piezas que se rompen o estropean al pintar o montar" },
+        { "id": "pPostprocesado", "etiqueta": "% postprocesado",     "tipo": "numero", "unidad": "%", "placeholderAjuste": "fallos.postprocesadoPct" },
+        { "id": "diseno",         "etiqueta": "Diseño",              "tipo": "booleano", "porDefectoAjuste": "fallos.disenoMarcada",
+          "ayuda": "Iteraciones de diseño que hay que rehacer" },
+        { "id": "pDiseno",        "etiqueta": "% diseño",            "tipo": "numero", "unidad": "%", "placeholderAjuste": "fallos.disenoPct" }
       ]
     }
   ]

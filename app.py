@@ -50,6 +50,13 @@ DEFAULT_SETTINGS = {
         "postprocesadoHora": None,  # €/h de pintura, montaje, acabados
         "disenoHora": None,         # €/h de diseño
     },
+    # Tasa de fallos por tipo: % por defecto y si la casilla viene marcada en las impresiones nuevas
+    "fallos": {
+        "disenoPct": None, "disenoMarcada": False,                # rehacer el diseño
+        "generalPct": None, "generalMarcada": False,              # repetir toda la impresión
+        "placaPct": None, "placaMarcada": False,                  # repetir una placa concreta
+        "postprocesadoPct": None, "postprocesadoMarcada": False,  # piezas rotas al pintar o montar
+    },
 }
 PHOTOS_DIR = "fotos"
 
@@ -175,7 +182,7 @@ def clean_settings(data):
             if key not in values:
                 continue
             v = values[key]
-            if key in ("activo", "automatica"):
+            if key in ("activo", "automatica") or key.endswith("Marcada"):
                 out[section][key] = bool(v)
             elif key == "carpeta":
                 out[section][key] = str(v or "").strip().strip('"')

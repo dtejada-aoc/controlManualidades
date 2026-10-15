@@ -11,6 +11,7 @@ const REPORTS = [
   { id: "gastos", titulo: "Informe de gastos" },
   { id: "produccion", titulo: "Informe de producción" },
   { id: "ventas", titulo: "Informe de ventas y rentabilidad" },
+  { id: "clientes", titulo: "Informe de clientes" },
 ];
 const reportState = { year: "" };
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -36,31 +37,42 @@ function niceScale(max, ticks = 4) {
 /** Recorta números del eje: 1.200 → "1,2k". */
 const axisFmt = (v) => (v >= 1000 ? `${numFmt.format(v / 1000)}k` : numFmt.format(v));
 
-/** Barras verticales. data: [{label, value, tip}] */
+/** Barras verticales. data: [{label, value, tip}]. Admite negativos (hacia abajo y en rojo). */
 function barChart(data, { fmt = money, height = 230 } = {}) {
   return (W) => {
     const pad = { l: 48, r: 8, t: 22, b: 26 };
     const iw = W - pad.l - pad.r, ih = height - pad.t - pad.b;
-    const { max, step } = niceScale(Math.max(...data.map((d) => d.value), 0));
+    const vals = data.map((d) => d.value);
+    const hi = Math.max(...vals, 0), lo = Math.min(...vals, 0);
+    const { step } = niceScale(Math.max(hi, -lo, 0));
+    const max = hi > 0 ? Math.ceil(hi / step - 1e-9) * step : (lo < 0 ? 0 : step * 4);
+    const min = lo < 0 ? -Math.ceil(-lo / step - 1e-9) * step : 0;
     const band = iw / Math.max(data.length, 1);
     const bw = Math.min(46, band * 0.62);
-    const y = (v) => pad.t + ih - (v / max) * ih;
-    const top = Math.max(...data.map((d) => d.value));
+    const y = (v) => pad.t + ((max - v) / (max - min || 1)) * ih;
+    const y0 = y(0);
+    const top = Math.max(...vals.map(Math.abs));
     const labelAll = data.length <= 8;
     let s = `<svg viewBox="0 0 ${W} ${height}" class="chart-svg" role="img">`;
-    for (let v = 0; v <= max + 1e-9; v += step) {
-      s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? "axis" : "grid"}"/>
-        <text x="${pad.l - 8}" y="${y(v) + 4}" class="tick" text-anchor="end">${axisFmt(v)}</text>`;
+    for (let v = min; v <= max + 1e-9; v += step) {
+      const vv = Math.abs(v) < 1e-9 ? 0 : v;
+      s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(vv)}" y2="${y(vv)}" class="${vv === 0 ? "axis" : "grid"}"/>
+        <text x="${pad.l - 8}" y="${y(vv) + 4}" class="tick" text-anchor="end">${vv < 0 ? "−" : ""}${axisFmt(Math.abs(vv))}</text>`;
     }
     data.forEach((d, i) => {
       const cx = pad.l + band * i + band / 2;
-      const h = (d.value / max) * ih;
-      const x0 = cx - bw / 2, yb = pad.t + ih, r = Math.min(4, h, bw / 2);
-      if (h > 0) {
-        s += `<path class="bar" d="M${x0},${yb} V${yb - h + r} Q${x0},${yb - h} ${x0 + r},${yb - h} H${x0 + bw - r} Q${x0 + bw},${yb - h} ${x0 + bw},${yb - h + r} V${yb} Z"/>`;
+      const h = Math.abs(y(d.value) - y0);
+      const x0 = cx - bw / 2, r = Math.min(4, h, bw / 2);
+      if (h > 0 && d.value > 0) {
+        const yt = y0 - h;
+        s += `<path class="bar" d="M${x0},${y0} V${yt + r} Q${x0},${yt} ${x0 + r},${yt} H${x0 + bw - r} Q${x0 + bw},${yt} ${x0 + bw},${yt + r} V${y0} Z"/>`;
+      } else if (h > 0) {
+        const yb = y0 + h;
+        s += `<path class="bar neg" d="M${x0},${y0} V${yb - r} Q${x0},${yb} ${x0 + r},${yb} H${x0 + bw - r} Q${x0 + bw},${yb} ${x0 + bw},${yb - r} V${y0} Z"/>`;
       }
-      if (h > 0 && (labelAll || d.value === top)) {
-        s += `<text x="${cx}" y="${yb - h - 6}" class="val" text-anchor="middle">${esc(fmt(d.value))}</text>`;
+      if (h > 0 && (labelAll || Math.abs(d.value) === top)) {
+        const ly = d.value > 0 ? y0 - h - 6 : y0 + h + 13;
+        s += `<text x="${cx}" y="${ly}" class="val" text-anchor="middle">${esc(fmt(d.value))}</text>`;
       }
       s += `<text x="${cx}" y="${height - 8}" class="tick" text-anchor="middle">${esc(d.label)}</text>
         <rect x="${pad.l + band * i}" y="${pad.t}" width="${band}" height="${ih}" class="hit" data-tip="${esc(d.tip || `${d.label}: ${fmt(d.value)}`)}"/>`;
@@ -370,6 +382,7 @@ function reportProduccion({ items }, charts) {
       { label: "Amortización máquinas", value: t("costeAmortizacion") },
       { label: "Postprocesado", value: t("costePostprocesado") },
       { label: "Diseño", value: t("costeDiseno") },
+      { label: "Fallos", value: t("costeFallos") },
     ].filter((e) => e.value > 0), { total: t("costeReal") }), "Según las tarifas de Configuración → Costes reales.") : ""}
     <div class="report-grid">
       ${block("Filamento por impresión", stackedBars(fil, { labels: ["Modelo", "Desperdicio"] }))}
@@ -418,6 +431,7 @@ function reportVentas({ items, ventas }, charts) {
   const beneficio = ingresos - coste;
   const uds = vs.reduce((s, x) => s + x.cantidad, 0);
   charts.ventasTiempo = barChart(timeSeries(vs, (x) => x.v.fecha, (x) => x.importe));
+  charts.beneficioTiempo = barChart(timeSeries(vs, (x) => x.v.fecha, (x) => x.importe - x.coste));
   const canales = Object.entries(sumBy(vs, (x) => x.v.canal || "Sin canal", (x) => x.importe))
     .sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
 
@@ -442,8 +456,10 @@ function reportVentas({ items, ventas }, charts) {
     ])}
     <div class="report-grid">
       ${chartBox("ventasTiempo", reportState.year ? `Ingresos por mes (${reportState.year})` : "Ingresos por año")}
-      ${block("Ingresos por canal", hBars(canales, { total: ingresos }))}
+      ${chartBox("beneficioTiempo", reportState.year ? `Beneficio por mes (${reportState.year})` : "Beneficio por año",
+        "Ingresos menos el coste de lo vendido. En rojo, los periodos con pérdidas.")}
     </div>
+    ${block("Ingresos por canal", hBars(canales, { total: ingresos }))}
     ${block("Rentabilidad por impresión", `<div class="table-wrap"><table class="report-table">
       <thead><tr><th>Impresión</th><th class="num">Uds. vendidas</th><th class="num">Precio medio</th><th class="num">Ingresos</th>
         <th class="num">Coste</th><th class="num">Beneficio</th><th class="num">Margen</th></tr></thead>
@@ -463,6 +479,82 @@ function reportVentas({ items, ventas }, charts) {
   `;
 }
 
+function reportClientes({ ventas }) {
+  const vs = ventas.filter((x) => inPeriod(x.v.fecha));
+  if (!vs.length) {
+    return `<div class="card empty"><h2>Todavía no hay ventas${reportState.year ? ` en ${reportState.year}` : ""}</h2>
+      <p class="muted">Este informe agrupa las ventas por cliente: lo que te ha comprado cada uno, cuánto te ha dejado de
+      beneficio y cuándo fue su última compra.</p></div>`;
+  }
+  // Agrupar por cliente (sin distinguir mayúsculas, tildes ni espacios de más)
+  const clientes = new Map();
+  for (const x of vs) {
+    const nombre = String(x.v.cliente || "").trim().replace(/\s+/g, " ");
+    const key = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() || "—"; // sin tildes ni mayúsculas
+    if (!clientes.has(key)) clientes.set(key, { nombre: nombre || "Sin cliente", ventas: [], canales: {}, productos: new Map() });
+    const c = clientes.get(key);
+    c.ventas.push(x);
+    const canal = x.v.canal || "Sin canal";
+    c.canales[canal] = (c.canales[canal] || 0) + 1;
+    if (!c.productos.has(x.it.id)) c.productos.set(x.it.id, { nombre: printName(x.it), u: 0, ing: 0, cos: 0 });
+    const p = c.productos.get(x.it.id);
+    p.u += x.cantidad; p.ing += x.importe; p.cos += x.coste;
+  }
+  const rows = [...clientes.values()].map((c) => {
+    const ing = c.ventas.reduce((s, x) => s + x.importe, 0);
+    const cos = c.ventas.reduce((s, x) => s + x.coste, 0);
+    return { ...c, n: c.ventas.length, u: c.ventas.reduce((s, x) => s + x.cantidad, 0), ing, cos, ben: ing - cos,
+      ultima: c.ventas.map((x) => x.v.fecha || "").sort().pop(),
+      canal: Object.entries(c.canales).sort((a, b) => b[1] - a[1])[0][0] };
+  }).sort((a, b) => b.ing - a.ing);
+
+  const ingresos = rows.reduce((s, r) => s + r.ing, 0);
+  const beneficio = rows.reduce((s, r) => s + r.ben, 0);
+  const conNombre = rows.filter((r) => r.nombre !== "Sin cliente");
+  const top = conNombre[0] || rows[0];
+  const recurrentes = conNombre.filter((r) => r.n > 1).length;
+  const TOP = 10;
+  const signed = (v) => `<span class="${v >= 0 ? "pos" : "neg"}">${esc(money(v))}</span>`;
+  const margen = (r) => pct(r.ing ? (r.ben / r.ing) * 100 : null);
+
+  return `
+    ${kpis([
+      { label: "Clientes", value: numFmt.format(conNombre.length), sub: rows.length > conNombre.length ? "+ ventas sin cliente" : "" },
+      { label: "Repiten", value: numFmt.format(recurrentes), sub: `${pct(conNombre.length ? (recurrentes / conNombre.length) * 100 : null)} de los clientes` },
+      { label: "Ingreso medio por cliente", value: money(conNombre.length ? conNombre.reduce((s, r) => s + r.ing, 0) / conNombre.length : 0) },
+      { label: "Cliente principal", value: top.nombre, sub: `${money(top.ing)} · ${pct(ingresos ? (top.ing / ingresos) * 100 : null)} de los ingresos` },
+      { label: "Beneficio total", value: money(beneficio), cls: beneficio >= 0 ? "pos" : "neg" },
+    ])}
+    <div class="report-grid">
+      ${block(`Ingresos por cliente${rows.length > TOP ? ` (los ${TOP} primeros)` : ""}`,
+        hBars(rows.slice(0, TOP).map((r) => ({ label: r.nombre, value: r.ing })), { total: ingresos }))}
+      ${block(`Beneficio por cliente${rows.length > TOP ? ` (los ${TOP} primeros)` : ""}`,
+        hBars([...rows].sort((a, b) => b.ben - a.ben).slice(0, TOP)
+          .map((r) => ({ label: r.nombre, value: Math.max(0, r.ben), sub: `${margen(r)} margen` }))))}
+    </div>
+    ${block("Resumen por cliente", `<div class="table-wrap"><table class="report-table">
+      <thead><tr><th>Cliente</th><th class="num">Ventas</th><th class="num">Uds.</th><th class="num">Ingresos</th>
+        <th class="num">Coste</th><th class="num">Beneficio</th><th class="num">Margen</th><th>Última compra</th><th>Canal habitual</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td><strong>${esc(r.nombre)}</strong></td>
+        <td class="num">${r.n}</td><td class="num">${esc(numFmt.format(r.u))}</td><td class="num">${esc(money(r.ing))}</td>
+        <td class="num">${esc(money(r.cos))}</td><td class="num">${signed(r.ben)}</td><td class="num">${esc(margen(r))}</td>
+        <td>${esc(fmtDate(r.ultima))}</td><td>${esc(r.canal)}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>Total (${rows.length})</td><td class="num">${vs.length}</td><td class="num">${esc(numFmt.format(rows.reduce((s, r) => s + r.u, 0)))}</td>
+        <td class="num">${esc(money(ingresos))}</td><td class="num">${esc(money(ingresos - beneficio))}</td><td class="num">${signed(beneficio)}</td>
+        <td class="num">${esc(pct(ingresos ? (beneficio / ingresos) * 100 : null))}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>`)}
+    ${block("Qué ha comprado cada cliente", `<div class="table-wrap"><table class="report-table">
+      <thead><tr><th>Producto</th><th class="num">Uds.</th><th class="num">Ingresos</th><th class="num">Beneficio</th></tr></thead>
+      ${rows.map((r) => `<tbody class="group">
+        <tr class="group-row"><td>${esc(r.nombre)} <span class="muted">(${r.n} venta${r.n === 1 ? "" : "s"})</span></td>
+          <td class="num">${esc(numFmt.format(r.u))}</td><td class="num">${esc(money(r.ing))}</td><td class="num">${signed(r.ben)}</td></tr>
+        ${[...r.productos.values()].sort((a, b) => b.ing - a.ing).map((pr) => `<tr><td>${esc(pr.nombre)}</td>
+          <td class="num">${esc(numFmt.format(pr.u))}</td><td class="num">${esc(money(pr.ing))}</td><td class="num">${signed(pr.ing - pr.cos)}</td></tr>`).join("")}
+      </tbody>`).join("")}
+    </table></div>`)}
+  `;
+}
+
 // ================================================================= VISTA
 
 async function viewReports(reportId) {
@@ -476,7 +568,8 @@ async function viewReports(reportId) {
   if (reportState.year && !years.includes(reportState.year)) reportState.year = "";
 
   const charts = {};
-  const builders = { resumen: reportResumen, gastos: reportGastos, produccion: reportProduccion, ventas: reportVentas };
+  const builders = { resumen: reportResumen, gastos: reportGastos, produccion: reportProduccion, ventas: reportVentas,
+    clientes: reportClientes };
   const body = builders[rep.id](data, charts);
   const periodo = reportState.year ? `Año ${reportState.year}` : "Todo el periodo";
   const generado = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });

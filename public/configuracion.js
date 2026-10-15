@@ -12,7 +12,13 @@ async function viewSettings() {
     api("GET", "/api/copias").catch((err) => ({ error: err.message, copias: [] })),
     (CONFIG.registros || []).some((r) => r.id === "gastos") ? api("GET", "/api/registros/gastos") : [],
   ]);
-  const draft = { copias: { ...ajustes.copias }, costes: { ...ajustes.costes } };
+  const draft = { copias: { ...ajustes.copias }, costes: { ...ajustes.costes }, fallos: { ...(ajustes.fallos || {}) } };
+  const TIPOS_FALLO = [
+    { key: "general", label: "Impresión general", help: "Repetir toda la impresión: filamento, electricidad y amortización de todas las placas." },
+    { key: "placa", label: "Placa", help: "Repetir una placa concreta (se marca en cada placa): su filamento, electricidad y amortización." },
+    { key: "postprocesado", label: "Postprocesado", help: "Piezas rotas al pintar o montar: sobre el coste de postprocesado." },
+    { key: "diseno", label: "Diseño", help: "Iteraciones de diseño que hay que rehacer: sobre el coste de diseño." },
+  ];
   const money = (v, unit = "") => fmtValue({ tipo: "moneda", unidad: unit }, v);
   const bytes = (n) => (n >= 1048576 ? `${numFmt.format(n / 1048576)} MB` : `${numFmt.format(Math.ceil(n / 1024))} KB`);
   const when = (iso) => new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
@@ -88,6 +94,20 @@ async function viewSettings() {
                 <span class="help">Se aplica al tiempo de diseño de cada impresión.</span></div>
             </div>
           </div>
+        </div>
+        <div class="settings-block" style="margin-top:14px">
+          <h3>Tasa de fallos</h3>
+          <p class="muted small" style="margin:0 0 8px">Valores por defecto. En cada impresión marcas qué fallos aplicar y puedes cambiar
+            el %. Orientativo: filamento ~10 %, resina ~20 %.</p>
+          <div class="table-wrap"><table class="report-table fallos-table">
+            <thead><tr><th>Tipo</th><th>% por defecto</th><th>Marcada por defecto</th><th>Se aplica sobre</th></tr></thead>
+            <tbody>${TIPOS_FALLO.map((t) => `<tr>
+              <td><strong>${esc(t.label)}</strong></td>
+              <td style="width:140px">${num(`fallos.${t.key}Pct`, draft.fallos[`${t.key}Pct`], { unit: "%" })}</td>
+              <td class="center"><label class="check"><input type="checkbox" data-set="fallos.${t.key}Marcada"
+                ${draft.fallos[`${t.key}Marcada`] ? "checked" : ""}> Sí</label></td>
+              <td class="muted small">${esc(t.help)}</td></tr>`).join("")}</tbody>
+          </table></div>
         </div>
         <div class="settings-block" style="margin-top:14px">
           <h3>Máquinas</h3>

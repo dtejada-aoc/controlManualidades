@@ -32,7 +32,7 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
   Es solo control del gasto: no se resta de los beneficios de las impresiones (el filamento ya se cuenta en el coste de cada placa).
 - **Ventas**: registro aparte (no se mezcla con las impresiones). Cada venta indica la impresión vendida,
   unidades, precio por unidad y coste por unidad (se copia de la impresión y se puede ajustar).
-- **Informes**: resumen general, gastos, producción y ventas, con filtro por año y botón
+- **Informes**: resumen general, gastos, producción, ventas (ingresos y beneficio) y clientes, con filtro por año y botón
   **Exportar PDF** (usa la impresión del navegador: elige «Guardar como PDF» / «Microsoft Print to PDF»).
   Cada impresión también tiene botón **PDF** para exportar su ficha.
 - **Configuración**:
@@ -41,6 +41,8 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
   - *Costes reales*: precio del kWh, postprocesado (€/h sobre pintura y montaje) y diseño (€/h).
     La electricidad y la amortización salen de la **máquina de cada placa** (catálogo Máquinas: consumo en W,
     precio y vida útil en horas). Cada impresión muestra su **coste real**.
+  - *Tasa de fallos* por tipo (impresión general, placa, postprocesado y diseño), con % por defecto y si
+    viene marcada; en cada impresión (y en cada placa) se eligen los fallos a aplicar y se puede cambiar el %.
 - **Catálogos**: máquinas (impresoras 3D, láser…, una marcada por defecto, con consumo, precio y vida útil), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
   (se eligen en la ficha de cada filamento).
 
