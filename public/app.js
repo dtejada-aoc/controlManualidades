@@ -175,6 +175,34 @@ async function api(method, url, body, raw = false) {
 }
 
 const photoUrl = (id, name) => `/fotos/${encodeURIComponent(id)}/${encodeURIComponent(name)}`;
+
+/**
+ * Sustituye las imágenes de `root` por una versión reducida (lado mayor `maxPx`) para que
+ * pantallas y PDF no carguen las fotos originales de la cámara (4000 px, varios MB cada una).
+ * Las fotos originales no se modifican; la versión reducida se guarda en memoria.
+ */
+const _reducidas = new Map();
+function downscaleImages(root, maxPx = 1400) {
+  root.querySelectorAll("img[data-reducir]").forEach((img) => {
+    const src = img.dataset.reducir;
+    const key = `${src}|${maxPx}`;
+    if (_reducidas.has(key)) { img.src = _reducidas.get(key); return; }
+    const full = new Image();
+    full.onload = () => {
+      const k = Math.min(1, maxPx / Math.max(full.naturalWidth, full.naturalHeight));
+      if (k >= 1) { _reducidas.set(key, src); img.src = src; return; }
+      const c = document.createElement("canvas");
+      c.width = Math.round(full.naturalWidth * k);
+      c.height = Math.round(full.naturalHeight * k);
+      c.getContext("2d").drawImage(full, 0, 0, c.width, c.height);
+      const url = c.toDataURL("image/jpeg", 0.85);
+      _reducidas.set(key, url);
+      if (img.isConnected) img.src = url;
+    };
+    full.onerror = () => { img.src = src; };
+    full.src = src;
+  });
+}
 const sections = () => CONFIG.secciones || [];
 const sectionById = (id) => sections().find((s) => s.id === id);
 const generalSection = () => sectionById("general") || sections()[0];
@@ -631,7 +659,7 @@ async function viewDetail(id) {
 
     ${it.fotos.length ? `<div class="card card-pad section"><h2>Fotos</h2>
       <div class="gallery">${it.fotos.map((f, i) => `
-        <button data-i="${i}"><img loading="lazy" src="${photoUrl(it.id, f)}" alt="Foto ${i + 1}"></button>`).join("")}</div></div>` : ""}
+        <button data-i="${i}"><img data-reducir="${photoUrl(it.id, f)}" alt="Foto ${i + 1}"></button>`).join("")}</div></div>` : ""}
 
     <div class="card card-pad section"><h2>${esc(gen.titulo)}</h2>${renderKv(gen, it.general, ["nombre", "estado", "fecha"])}</div>
 
@@ -649,6 +677,7 @@ async function viewDetail(id) {
     </p>
   `;
 
+  downscaleImages(app, 900); // galería y PDF de la ficha sin las fotos originales (el visor sí abre la original)
   app.querySelectorAll(".gallery button").forEach((b) =>
     b.addEventListener("click", () => openLightbox(it.fotos.map((f) => photoUrl(it.id, f)), Number(b.dataset.i))));
 

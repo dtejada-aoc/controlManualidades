@@ -490,3 +490,17 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; backgro
 .rev-el { display: flex; gap: 8px; align-items: flex-start; padding: 3px 2px; cursor: pointer; border-radius: 4px; }
 .rev-el:hover { background: var(--surface-2); }
 .rev-el input { width: 16px; height: 16px; margin-top: 1px; flex: none; accent-color: var(--accent); }
+
+/* ficha: hasta 3 fotos, una al lado de la otra */
+.sheet-photo-row { display: grid; gap: 10px; justify-content: center; }
+.sheet-photo.fotos-1 .sheet-photo-row { grid-template-columns: minmax(0, 1fr); }
+.sheet-photo.fotos-2 .sheet-photo-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sheet-photo.fotos-3 .sheet-photo-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sheet-photo.fotos-2 img, .sheet-photo.fotos-3 img { width: 100%; height: 230px; object-fit: contain; background: var(--surface-2); }
+.sheet-photo.fotos-1 img { justify-self: center; }
+.sheet-thumbs button { position: relative; }
+.thumb-n { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent);
+  color: #fff; font-size: .7rem; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
+@media print {
+  .sheet-photo.fotos-2 img, .sheet-photo.fotos-3 img { height: 5.5cm; background: none; }
+}

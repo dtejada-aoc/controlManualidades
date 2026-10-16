@@ -41,7 +41,11 @@ async function viewClientSheet(id) {
   try { st = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch { /* sin almacenamiento */ }
   const firma = JSON.stringify([partes.map((p) => p.nombre), preguntas.map((q) => q.etiqueta)]);
   if (st?.firma !== firma) st = null;
-  st ??= { firma, partes: partes.map((p) => p.filamento || ""), datos: preguntas.map(() => ""), cliente: {}, foto: 0, paleta: true, verCliente: true };
+  st ??= { firma, partes: partes.map((p) => p.filamento || ""), datos: preguntas.map(() => ""), cliente: {}, paleta: true, verCliente: true };
+  // Fotos de la ficha (hasta 3): las guardadas en la ficha que sigan existiendo; si no hay, la primera
+  const MAX_FOTOS = 3;
+  let fotosSel = asArray(ficha.fotos).filter((f) => it.fotos.includes(f)).slice(0, MAX_FOTOS);
+  if (!fotosSel.length && it.fotos.length) fotosSel = [it.fotos[0]];
   // Partes o datos añadidos después: el color propuesto y la respuesta vacía
   partes.forEach((p, i) => { if (st.partes[i] === undefined) st.partes[i] = p.filamento || ""; });
   preguntas.forEach((q, i) => { if (st.datos[i] === undefined) st.datos[i] = ""; });
@@ -110,7 +114,6 @@ async function viewClientSheet(id) {
   };
 
   const render = () => {
-    const foto = it.fotos[st.foto] || it.fotos[0];
     const clienteField = (k, lbl, type = "text") => `<div class="sheet-row"><div class="sheet-label">${lbl}</div>
       <div class="sheet-value"><span class="no-print"><input type="${type}" data-cli="${k}" value="${esc(st.cliente[k] || "")}"></span>
       <span class="ans-fill print-only">${isEmpty(st.cliente[k]) ? LINE : esc(type === "date" ? fmtDate(st.cliente[k]) : st.cliente[k])}</span>
@@ -135,11 +138,15 @@ async function viewClientSheet(id) {
           <p class="muted">${esc(fecha)}</p>
         </header>
 
-        ${foto ? `<figure class="sheet-photo"><img src="${photoUrl(it.id, foto)}" alt="Foto de referencia">
-          <figcaption class="muted small">Foto de referencia</figcaption></figure>
-          ${it.fotos.length > 1 ? `<div class="sheet-thumbs no-print">${it.fotos.map((f, i) => `
-            <button type="button" data-foto="${i}" class="${f === foto ? "active" : ""}"><img src="${photoUrl(it.id, f)}" alt=""></button>`).join("")}
-            <span class="muted small">Foto que aparece en la ficha</span></div>` : ""}` : ""}
+        ${fotosSel.length ? `<figure class="sheet-photo fotos-${fotosSel.length}">
+          <div class="sheet-photo-row">${fotosSel.map((f) => `<img data-reducir="${photoUrl(it.id, f)}" alt="Foto de referencia">`).join("")}</div>
+          <figcaption class="muted small">${fotosSel.length > 1 ? "Fotos de referencia" : "Foto de referencia"}</figcaption></figure>` : ""}
+        ${it.fotos.length > 1 ? `<div class="sheet-thumbs no-print">${it.fotos.map((f) => {
+          const n = fotosSel.indexOf(f) + 1;
+          return `<button type="button" data-foto="${esc(f)}" class="${n ? "active" : ""}" title="${n ? "Quitar de la ficha" : "Añadir a la ficha"}">
+            <img src="${photoUrl(it.id, f)}" alt="">${n ? `<span class="thumb-n">${n}</span>` : ""}</button>`;
+        }).join("")}
+          <span class="muted small">Elige hasta ${MAX_FOTOS} fotos (${fotosSel.length} de ${MAX_FOTOS})</span></div>` : ""}
 
         ${ficha.descripcion ? `<p class="sheet-text pre">${esc(ficha.descripcion)}</p>` : ""}
 
@@ -161,10 +168,11 @@ async function viewClientSheet(id) {
       </article>
     `;
 
+    downscaleImages(app, 1400); // fotos a tamaño de impresión (el PDF no se hincha con las originales)
     // --- eventos
     app.querySelector(".client-sheet").addEventListener("input", onEdit);
     app.querySelector(".client-sheet").addEventListener("change", onEdit);
-    app.querySelectorAll("[data-foto]").forEach((b) => (b.onclick = () => { st.foto = Number(b.dataset.foto); persist(); render(); }));
+    app.querySelectorAll("[data-foto]").forEach((b) => (b.onclick = () => toggleFoto(b.dataset.foto)));
     document.getElementById("opt-paleta").onchange = (e) => { st.paleta = e.target.checked; persist(); render(); };
     document.getElementById("opt-cliente").onchange = (e) => { st.verCliente = e.target.checked; persist(); render(); };
     document.getElementById("pdf-fill").onclick = () => printAs(`Ficha - ${titulo}`);
@@ -173,6 +181,26 @@ async function viewClientSheet(id) {
       window.addEventListener("afterprint", () => document.body.classList.remove("sheet-blank"), { once: true });
       printAs(`Ficha en blanco - ${titulo}`);
     };
+  };
+
+  /** Añade o quita una foto de la ficha (máximo 3) y guarda la selección en la ficha de la impresión. */
+  const toggleFoto = async (f) => {
+    if (fotosSel.includes(f)) {
+      if (fotosSel.length === 1) return toast("La ficha necesita al menos una foto");
+      fotosSel = fotosSel.filter((x) => x !== f);
+    } else {
+      if (fotosSel.length >= MAX_FOTOS) return toast(`Como máximo ${MAX_FOTOS} fotos: quita una antes de añadir otra`, true);
+      fotosSel = [...fotosSel, f];
+    }
+    const scroll = window.scrollY;
+    render();
+    window.scrollTo(0, scroll);
+    try {
+      const actual = await api("GET", `/api/impresiones/${encodeURIComponent(id)}`);
+      delete actual.fotos;
+      actual.ficha = { ...(actual.ficha || {}), fotos: fotosSel };
+      await api("PUT", `/api/impresiones/${encodeURIComponent(id)}`, actual);
+    } catch (err) { toast(`No se pudo guardar la selección de fotos: ${err.message}`, true); }
   };
 
   /** Guarda la respuesta y actualiza solo su versión impresa (sin repintar, para no perder el foco). */
@@ -359,6 +387,7 @@ async function editClientSheet(id) {
 
   const save = async () => {
     const ficha = {
+      ...(asArray(draft.fotos).length ? { fotos: draft.fotos } : {}),
       ...(isEmpty(draft.titulo?.trim()) ? {} : { titulo: draft.titulo.trim() }),
       ...(isEmpty(draft.descripcion?.trim()) ? {} : { descripcion: draft.descripcion.trim() }),
       partes: draft.partes.filter((p) => !isEmpty(p.nombre?.trim()))
