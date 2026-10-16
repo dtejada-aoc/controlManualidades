@@ -26,7 +26,6 @@ const fmtExact = (field, v) => {
   return `${new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(v))} ${CONFIG.moneda || "€"}${field.unidad || ""}`;
 };
 const round4 = (v) => Math.round(Number(v) * 10000) / 10000;
-const MAX_LINEAS = 8;
 
 // ------------------------------------------------------------ recorrer datos
 
@@ -79,7 +78,23 @@ const printNames = (items) => Object.fromEntries(items.map((it) => [it.id, print
 
 // ------------------------------------------------------------ propuestas
 
-/** Propuestas de ventas cuyo coste por unidad cambia entre dos estados. */
+/**
+ * Agrupa los usos por sitio (una impresión o un registro) en elementos seleccionables:
+ * cada elemento aplica el cambio a todos los usos de ese sitio.
+ */
+function usosAElementos(usos, aplicar) {
+  const grupos = new Map();
+  for (const u of usos) {
+    if (!grupos.has(u.donde)) grupos.set(u.donde, []);
+    grupos.get(u.donde).push(u);
+  }
+  return [...grupos].map(([donde, list]) => ({
+    texto: list.length > 1 ? `${donde} (${list.length} usos)` : donde,
+    apply: (mark) => { for (const u of list) { aplicar(u); u.mark(mark); } },
+  }));
+}
+
+/** Propuestas de ventas cuyo coste por unidad cambia entre dos estados (una casilla por venta). */
 function salesProposals(ventas, before, after, names) {
   const sync = [], manual = [];
   for (const v of ventas) {
@@ -88,15 +103,15 @@ function salesProposals(ventas, before, after, names) {
     if (near(a, v.costeUnidad) || (b !== undefined && near(a, b))) continue;
     (b !== undefined && b !== null && near(v.costeUnidad, b) ? sync : manual).push({ v, a });
   }
-  const linea = ({ v, a }) => `${fmtDate(v.fecha)} · ${names[v.impresion] || v.impresion} · ${v.cantidad} ud.: `
-    + `${fmtValue({ tipo: "moneda" }, v.costeUnidad)} → ${fmtValue({ tipo: "moneda" }, a)}`;
+  const texto = ({ v, a }) => `${fmtDate(v.fecha)} · ${names[v.impresion] || v.impresion} · ${v.cantidad} ud.`
+    + `${v.cliente ? ` · ${v.cliente}` : ""}: ${fmtValue({ tipo: "moneda" }, v.costeUnidad)} → ${fmtValue({ tipo: "moneda" }, a)}`;
   const make = (list, marcada, titulo) => list.length ? [{
-    grupo: "Ventas", marcada, titulo, lineas: list.map(linea),
-    apply: (mark) => { for (const { v, a } of list) v.costeUnidad = round4(a); mark.reg("ventas"); },
+    grupo: "Ventas", marcada, titulo,
+    elementos: list.map((x) => ({ texto: texto(x), apply: (mark) => { x.v.costeUnidad = round4(x.a); mark.reg("ventas"); } })),
   }] : [];
   return [
-    ...make(sync, true, `Recalcular el coste por unidad de ${sync.length} venta(s) que estaban al día`),
-    ...make(manual, false, `Recalcular también ${manual.length} venta(s) con un coste ajustado a mano o ya desactualizado`),
+    ...make(sync, true, "Recalcular el coste por unidad de las ventas que estaban al día"),
+    ...make(manual, false, "Recalcular también las ventas con un coste ajustado a mano o ya desactualizado"),
   ];
 }
 
@@ -109,18 +124,20 @@ function fillProposals({ grupo, nombreElemento, usos, campoDestino, etiqueta, an
   const otros = usos.filter((u) => !sync.includes(u) && !same(u.row[campoDestino], despues));
   const mk = (list, marcada, titulo) => list.length ? [{
     grupo, marcada, titulo,
-    lineas: [...new Set(list.map((u) => u.donde))].map((d) => `${d}`),
-    apply: (mark) => { for (const u of list) { u.row[campoDestino] = despues; u.mark(mark); } },
+    elementos: usosAElementos(list, (u) => { u.row[campoDestino] = despues; }),
   }] : [];
   return [
-    ...mk(sync, true, `${etiqueta} de «${nombreElemento}»: ${fmt(antes)} → ${fmt(despues)} en ${sync.length} uso(s) con el valor anterior`),
-    ...mk(otros, false, `${etiqueta} de «${nombreElemento}»: poner también ${fmt(despues)} en ${otros.length} uso(s) con otro valor (ajustado a mano)`),
+    ...mk(sync, true, `${etiqueta} de «${nombreElemento}»: ${fmt(antes)} → ${fmt(despues)} donde tenía el valor anterior`),
+    ...mk(otros, false, `${etiqueta} de «${nombreElemento}»: poner también ${fmt(despues)} donde tenía otro valor (ajustado a mano)`),
   ];
 }
 
 // ------------------------------------------------------------ ventana de revisión
 
-/** Muestra las propuestas y devuelve las que se marquen (vacío si se cancela). */
+/**
+ * Muestra las propuestas, cada una con su lista de afectados seleccionables uno a uno,
+ * y devuelve los elementos marcados (vacío si se cancela).
+ */
 function showReview(titulo, intro, proposals) {
   return new Promise((resolve) => {
     const grupos = [...new Set(proposals.map((p) => p.grupo))];
@@ -130,12 +147,18 @@ function showReview(titulo, intro, proposals) {
       <h2 id="rev-title">${esc(titulo)}</h2>
       <p class="muted">${esc(intro)}</p>
       <div class="modal-body">${grupos.map((g) => `<section class="review-group"><h3>${esc(g)}</h3>
-        ${proposals.map((p, i) => p.grupo !== g ? "" : `<label class="review-item">
-          <input type="checkbox" data-i="${i}" ${p.marcada ? "checked" : ""}>
-          <span><strong>${esc(p.titulo)}</strong>
-            ${p.lineas?.length ? `<ul class="muted small">${p.lineas.slice(0, MAX_LINEAS).map((l) => `<li>${esc(l)}</li>`).join("")}
-              ${p.lineas.length > MAX_LINEAS ? `<li>… y ${p.lineas.length - MAX_LINEAS} más</li>` : ""}</ul>` : ""}
-            ${p.nota ? `<span class="muted small">${esc(p.nota)}</span>` : ""}</span></label>`).join("")}
+        ${proposals.map((p, i) => p.grupo !== g ? "" : `<div class="review-item" data-p="${i}">
+          <input type="checkbox" class="rev-all" data-p="${i}" ${p.marcada ? "checked" : ""} aria-label="Todos">
+          <div>
+            <strong>${esc(p.titulo)}</strong> <span class="muted small rev-count" data-p="${i}"></span>
+            ${p.nota ? `<div class="muted small">${esc(p.nota)}</div>` : ""}
+            <details class="rev-list" ${p.elementos.length <= 10 ? "open" : ""}>
+              <summary class="small">${p.elementos.length <= 10 ? "Afectados" : `Ver los ${p.elementos.length} afectados`}</summary>
+              ${p.elementos.map((e, j) => `<label class="rev-el">
+                <input type="checkbox" class="rev-one" data-p="${i}" data-e="${j}" ${p.marcada ? "checked" : ""}>
+                <span class="small">${esc(e.texto)}</span></label>`).join("")}
+            </details>
+          </div></div>`).join("")}
       </section>`).join("")}</div>
       <div class="editor-actions">
         <button class="btn" data-r="none">No cambiar nada</button>
@@ -143,30 +166,50 @@ function showReview(titulo, intro, proposals) {
         <button class="btn btn-primary" data-r="ok">Aplicar lo marcado</button>
       </div></div>`;
     document.body.appendChild(box);
+
+    // Casilla de la propuesta: marcada, desmarcada o a medias según sus elementos
+    const sync = (i) => {
+      const ones = [...box.querySelectorAll(`.rev-one[data-p="${i}"]`)];
+      const n = ones.filter((c) => c.checked).length;
+      const all = box.querySelector(`.rev-all[data-p="${i}"]`);
+      all.checked = n === ones.length;
+      all.indeterminate = n > 0 && n < ones.length;
+      box.querySelector(`.rev-count[data-p="${i}"]`).textContent = `(${n} de ${ones.length} seleccionados)`;
+    };
+    proposals.forEach((_, i) => sync(i));
+    box.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.classList.contains("rev-all")) {
+        box.querySelectorAll(`.rev-one[data-p="${t.dataset.p}"]`).forEach((c) => (c.checked = t.checked));
+        sync(t.dataset.p);
+      } else if (t.classList.contains("rev-one")) sync(t.dataset.p);
+    });
+
     const close = (sel) => { box.remove(); resolve(sel); };
     box.querySelector('[data-r="none"]').onclick = () => close([]);
     box.querySelector('[data-r="ok"]').onclick = () =>
-      close([...box.querySelectorAll("input[data-i]:checked")].map((c) => proposals[Number(c.dataset.i)]));
+      close([...box.querySelectorAll(".rev-one:checked")].map((c) => proposals[Number(c.dataset.p)].elementos[Number(c.dataset.e)]));
     box.addEventListener("keydown", (e) => { if (e.key === "Escape") close([]); });
     box.querySelector('[data-r="ok"]').focus();
   });
 }
 
-/** Revisa unas propuestas y guarda lo aplicado. Devuelve true si se cambió algo. */
+/** Revisa unas propuestas y guarda los elementos marcados. Devuelve true si se cambió algo. */
 async function reviewAndApply(titulo, intro, proposals, data) {
+  proposals = proposals.filter((p) => p.elementos?.length);
   if (!proposals.length) return false;
   const sel = await showReview(titulo, intro, proposals);
   if (!sel.length) return false;
   const prints = new Set(), regs = new Set();
   const mark = { print: (it) => prints.add(it), reg: (rid) => regs.add(rid) };
-  for (const p of sel) p.apply(mark);
+  for (const e of sel) e.apply(mark);
   for (const it of prints) {
     const body = clone(it);
     delete body.fotos; delete body._tot;
     await api("PUT", `/api/impresiones/${encodeURIComponent(it.id)}`, body);
   }
   for (const rid of regs) data.regs[rid] = await api("PUT", `/api/registros/${rid}`, data.regs[rid]);
-  toast(`Datos actualizados: ${prints.size ? `${prints.size} impresión(es)` : ""}${prints.size && regs.size ? " y " : ""}${regs.size ? `${[...regs].join(", ")}` : ""}`);
+  toast(`Aplicados ${sel.length} cambio(s): ${prints.size ? `${prints.size} impresión(es)` : ""}${prints.size && regs.size ? " y " : ""}${regs.size ? [...regs].join(", ") : ""}`);
   return true;
 }
 
@@ -214,10 +257,9 @@ async function reviewCatalogChange(def, oldList, newList, pares) {
       if (usos.length) {
         props.push({
           grupo: "Nombres", marcada: true,
-          titulo: `«${antes.nombre}» → «${despues.nombre}»: cambiar el nombre en ${usos.length} uso(s)`,
-          lineas: [...new Set(usos.map((u) => u.donde))],
-          nota: "Si no se cambia, esos datos se quedarán apuntando a un nombre que ya no está en el catálogo.",
-          apply: (mark) => { for (const u of usos) { u.row[u.f.id] = despues.nombre; u.mark(mark); } },
+          titulo: `«${antes.nombre}» → «${despues.nombre}»: cambiar el nombre donde se usa`,
+          nota: "Los que no se cambien se quedarán apuntando a un nombre que ya no está en el catálogo (se marcarán con ⚠).",
+          elementos: usosAElementos(usos, (u) => { u.row[u.f.id] = despues.nombre; }),
         });
       }
     }

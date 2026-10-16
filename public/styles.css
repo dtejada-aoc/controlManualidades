@@ -480,3 +480,13 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; backgro
 .review-item input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
 .review-item ul { margin: 4px 0 0; padding-left: 18px; }
 .warn { color: var(--danger); cursor: help; }
+
+/* revisión de cambios: afectados seleccionables uno a uno */
+.review-item { cursor: default; }
+.review-item .rev-all { cursor: pointer; }
+.rev-list { margin-top: 6px; }
+.rev-list summary { cursor: pointer; color: var(--accent); margin-bottom: 4px; }
+.rev-list[open] { max-height: 220px; overflow: auto; }
+.rev-el { display: flex; gap: 8px; align-items: flex-start; padding: 3px 2px; cursor: pointer; border-radius: 4px; }
+.rev-el:hover { background: var(--surface-2); }
+.rev-el input { width: 16px; height: 16px; margin-top: 1px; flex: none; accent-color: var(--accent); }
