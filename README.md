@@ -24,7 +24,9 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 
 ## Pantallas
 
-- **Impresiones**: listado con totales; cada ficha muestra producción y filamento. Cada placa lleva
+- **Impresiones**: listado con totales; cada ficha muestra producción y filamento. Opcionalmente, el botón **Ficha**
+  abre una pantalla propia para configurar una ficha de pedido (partes cuyo color elige el cliente y datos a pedir)
+  y sacarla en PDF, en blanco para enviarla al cliente o con sus respuestas. Cada placa lleva
   uno o varios **filamentos** con sus gramos (modelo y desperdicio); el coste de material se calcula
   con el precio por kg del filamento (copiado al elegirlo, para que no cambie si luego varía el precio).
 - **Filamentos**: bobinas con nombre, marca, tipo, color (con muestra opcional) y precio por kg.

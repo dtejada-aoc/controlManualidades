@@ -565,7 +565,7 @@ async function viewDetail(id) {
   // Las ventas viven en su propio registro; aquí solo se enlazan discretamente.
   const sold = (CONFIG.registros || []).some((r) => r.id === "ventas")
     ? (await api("GET", "/api/registros/ventas")).filter((v) => v.impresion === it.id) : [];
-  const knownKeys = new Set(["id", "fotos", "creado", "modificado", ...sections().map((s) => s.id)]);
+  const knownKeys = new Set(["id", "fotos", "creado", "modificado", "ficha", ...sections().map((s) => s.id)]);
 
   const renderKv = (sec, obj, skip = []) => {
     const fields = visibleFields(sec.campos).filter((f) => !skip.includes(f.id) && !isEmpty(fieldValue(f, obj)));
@@ -616,6 +616,7 @@ async function viewDetail(id) {
         </p>
       </div>
       <div class="actions">
+        <a class="btn" href="#/ficha/${esc(it.id)}" title="Ficha de pedido para el cliente (PDF)">Ficha${it.ficha ? " ✓" : ""}</a>
         <a class="btn" href="#/editar/${esc(it.id)}">Editar</a>
         <button class="btn" id="pdf">PDF</button>
         <button class="btn" id="dup">Duplicar</button>
@@ -970,9 +971,12 @@ async function viewForm(id) {
     const body = app.querySelector(`[data-sec="${sec.id}"] .sec-body`);
     if (!sec.repetible) {
       draft[sec.id] = draft[sec.id] || {};
-      body.innerHTML = `<div class="form-grid">${visibleFields(sec.campos).map((f) =>
-        fieldBlock(f, draft[sec.id][f.id], `${sec.id}.${f.id}`)).join("")}</div>`;
+      body.innerHTML = `${sec.descripcion ? `<p class="muted small" style="margin:-4px 0 12px">${esc(sec.descripcion)}</p>` : ""}
+        <div class="form-grid">${visibleFields(sec.campos).map((f) =>
+        fieldBlock(f, draft[sec.id][f.id], `${sec.id}.${f.id}`)).join("")}</div>
+`;
       updateComputed(sec);
+      bindSubLists(sec, body);
       return;
     }
     const rows = (draft[sec.id] = asArray(draft[sec.id]));
@@ -1004,7 +1008,10 @@ async function viewForm(id) {
       renderSection(sec);
       if (b.dataset.act === "add") body.querySelector(".repeat-item:last-of-type")?.scrollIntoView({ block: "center", behavior: "smooth" });
     }));
-    // Listas anidadas (filamentos de cada placa): añadir / quitar elementos
+    bindSubLists(sec, body);
+  };
+  // Listas anidadas (filamentos de cada placa, partes de la ficha…): añadir / quitar elementos
+  const bindSubLists = (sec, body) => {
     body.querySelectorAll("[data-sub]").forEach((b) => b.addEventListener("click", () => {
       const keys = b.dataset.list.split(".");
       const { field } = resolvePath(draft, b.dataset.list);
@@ -1380,6 +1387,9 @@ async function router() {
     else if (route === "catalogos") await viewCatalogs();
     else if (route === "informes") await viewReports(param);
     else if (route === "configuracion") await viewSettings();
+    else if (route === "ficha" && param) {
+      await (hash.includes("?editar") ? editClientSheet : viewClientSheet)(decodeURIComponent(param));
+    }
     else if ((CONFIG.registros || []).some((r) => r.id === route)) {
       await viewRegister(CONFIG.registros.find((r) => r.id === route), hash.split("?")[1] || "");
     } else await viewList();
