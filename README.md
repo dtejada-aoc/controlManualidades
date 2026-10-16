@@ -48,6 +48,19 @@ El servidor solo escucha en `127.0.0.1` (no es accesible desde otros equipos) y 
 - **Catálogos**: máquinas (impresoras 3D, láser…, una marcada por defecto, con consumo, precio y vida útil), accesorios con su precio por unidad, tipos de gasto y tipos de filamento
   (se eligen en la ficha de cada filamento).
 
+## Control de cambios
+
+Al guardar un catálogo, un registro (p. ej. filamentos), una impresión o la configuración, la app revisa a qué
+datos afecta el cambio y muestra una ventana para elegir qué actualizar:
+
+- **Renombrar** un elemento de catálogo → cambiar el nombre en las impresiones y registros que lo usan.
+- **Precio** de un accesorio o de un filamento → actualizar el precio guardado en las impresiones.
+- Cambios que alteran el **coste** (impresión, máquinas, configuración de costes) → recalcular el coste por
+  unidad guardado en las ventas.
+
+Cada propuesta viene marcada si el dato estaba al día y desmarcada si parece ajustado a mano. Al **borrar** algo
+que se está usando, avisa antes. Las referencias que no están en el catálogo se marcan con ⚠.
+
 ## Cómo se calcula
 
 - **Coste por unidad** = coste total ÷ unidades obtenidas.

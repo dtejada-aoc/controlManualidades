@@ -466,3 +466,17 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; backgro
 /* configurar ficha */
 .color-pick { display: flex; align-items: center; gap: 8px; }
 .color-pick select { min-width: 0; }
+
+/* =========================================== control de cambios (revisión) */
+.modal { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, .45); display: grid; place-items: center; padding: 16px; }
+.modal-card { width: min(720px, 100%); max-height: 88vh; display: flex; flex-direction: column; padding: 18px 20px; }
+.modal-card h2 { margin-bottom: 4px; }
+.modal-card > p { margin: 0 0 10px; }
+.modal-body { overflow: auto; padding-right: 4px; }
+.review-group h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
+.review-item { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+.review-item:hover { background: var(--surface-2); }
+.review-item input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
+.review-item ul { margin: 4px 0 0; padding-left: 18px; }
+.warn { color: var(--danger); cursor: help; }

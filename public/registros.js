@@ -252,8 +252,11 @@ async function viewRegister(def, params = "") {
 
     const close = () => { editing = null; formDirty = false; box.innerHTML = ""; };
     const persist = async (next, msg) => {
+      const antes = list;
       list = await api("PUT", `/api/registros/${def.id}`, next);
       close(); render(); toast(msg);
+      // Control de cambios: copias de este registro en las impresiones (p. ej. precio por kg del filamento)
+      try { await reviewRegisterChange(def, antes, list); } catch (err) { toast(err.message, true); }
     };
 
     document.getElementById("reg-cancel").onclick = () => {
@@ -261,7 +264,8 @@ async function viewRegister(def, params = "") {
       close();
     };
     document.getElementById("reg-del")?.addEventListener("click", async () => {
-      if (!confirm(`¿Eliminar "${describe(item)}"?\n\nSe guarda una copia de seguridad en data/papelera.`)) return;
+      const aviso = await registerDeleteWarning(def, item);
+      if (!confirm(`¿Eliminar "${describe(item)}"?\n\nSe guarda una copia de seguridad en data/papelera.${aviso}`)) return;
       try { await persist(list.filter((it) => it.id !== item.id), done("eliminad")); }
       catch (err) { toast(err.message, true); }
     });

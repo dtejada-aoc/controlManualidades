@@ -181,8 +181,11 @@ async function viewSettings() {
   root.addEventListener("change", onEdit);
 
   const save = async () => {
+    const antes = clone(AJUSTES);
     const saved = await api("PUT", "/api/ajustes", draft);
     AJUSTES = saved;
+    // Control de cambios: ventas cuyo coste por unidad cambia con los nuevos costes
+    try { await reviewSettingsChange(antes, saved); } catch (err) { toast(err.message, true); }
     formDirty = false;
     document.getElementById("settings-save").classList.remove("pending");
     return saved;

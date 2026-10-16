@@ -141,6 +141,9 @@ function fmtValueHtml(field, value) {
     }).join("")}</ul>`;
   }
   if (field.tipo === "color") return isHexColor(value) ? `${swatch(value)} <span class="muted">${esc(value.toUpperCase())}</span>` : esc(value);
+  if (field.tipo === "catalogo" && CATALOGS[field.catalogo] && !CATALOGS[field.catalogo].some((c) => c.nombre === value)) {
+    return `${esc(value)} <span class="warn" title="No está en el catálogo (¿se renombró o se borró?)">⚠</span>`;
+  }
   if (field.tipo === "impresion" && PRINTS[value]) {
     return `<a href="#/i/${esc(value)}">${esc(PRINTS[value].nombre)}</a>`;
   }
@@ -729,8 +732,9 @@ function fieldInput(field, value, path) {
         ? (CATALOGS[field.catalogo] || []).map((c) => c.nombre).filter(Boolean)
         : asArray(field.opciones);
       const extra = !isEmpty(value) && !opts.includes(value) ? [value] : [];
+      const missing = field.tipo === "catalogo" ? " ⚠ (no está en el catálogo)" : "";
       return `<select ${attrs}><option value=""></option>${[...opts, ...extra].map((o) =>
-        `<option ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+        `<option value="${esc(o)}" ${o === value ? "selected" : ""}>${esc(o)}${extra.includes(o) ? missing : ""}</option>`).join("")}</select>`;
     }
     case "color": {
       // Selector visual + código #RRGGBB editable. El valor se guarda desde el campo de texto
@@ -888,8 +892,10 @@ async function viewForm(id) {
   const params = location.hash.split("?")[1] || "";
   await loadRegisters(registersUsed());
   let draft;
+  let original = null; // para revisar después qué ventas cambian
   if (editing) {
     draft = await api("GET", `/api/impresiones/${encodeURIComponent(id)}`);
+    original = clone(draft);
   } else {
     const fromCopy = params === "copia" && sessionStorage.getItem("borrador");
     draft = fromCopy ? JSON.parse(fromCopy) : {};
@@ -1123,6 +1129,8 @@ async function viewForm(id) {
       }
       formDirty = false;
       toast("Impresión guardada");
+      // Control de cambios: ventas de esta impresión cuyo coste por unidad cambia
+      try { await reviewPrintChange(original, saved); } catch (err) { toast(err.message, true); }
       location.hash = `#/i/${saved.id}`;
     } catch (err) {
       toast(err.message, true);
@@ -1137,6 +1145,10 @@ async function viewCatalogs() {
   await loadCatalogs();
   const defs = CONFIG.catalogos || [];
   const drafts = Object.fromEntries(defs.map((c) => [c.id, clone(CATALOGS[c.id] || [])]));
+  // Fila del borrador → fila original (los catálogos no tienen id: así se detectan renombres)
+  const origen = new WeakMap();
+  const trackOrigins = (cid) => drafts[cid].forEach((r) => origen.set(r, clone(r)));
+  defs.forEach((c) => trackOrigins(c.id));
 
   app.innerHTML = `
     <div class="page-head"><div><h1>Catálogos</h1>
@@ -1268,12 +1280,22 @@ async function viewCatalogs() {
     const names = rows.filter((r) => !rowIsBlank(c.campos, r)).map((r) => (r.nombre || "").trim().toLowerCase());
     if (new Set(names).size !== names.length) return toast("Hay nombres repetidos en el catálogo", true);
     try {
-      drafts[c.id] = await api("PUT", `/api/catalogos/${c.id}`, rows.filter((r) => !rowIsBlank(c.campos, r)));
-      CATALOGS[c.id] = clone(drafts[c.id]);
+      const enviar = rows.filter((r) => !rowIsBlank(c.campos, r));
+      const antes = clone(CATALOGS[c.id] || []);
+      const siguen = new Set(enviar.map((r) => origen.get(r)).filter(Boolean).map((o) => JSON.stringify(o)));
+      const borrados = antes.filter((o) => !siguen.has(JSON.stringify(o)));
+      if (!(await confirmCatalogDeletes(c, borrados))) return;
+      const guardados = await api("PUT", `/api/catalogos/${c.id}`, enviar);
+      const pares = enviar.map((r, k) => ({ antes: origen.get(r), despues: guardados[k] })).filter((x) => x.antes);
+      drafts[c.id] = guardados;
+      CATALOGS[c.id] = clone(guardados);
+      trackOrigins(c.id);
       formDirty = defs.some((d) => JSON.stringify(drafts[d.id]) !== JSON.stringify(CATALOGS[d.id]));
       btn.classList.remove("pending");
       render(c);
       toast(`${c.titulo} guardados`);
+      // Control de cambios: renombres, valores copiados y ventas afectadas
+      await reviewCatalogChange(c, antes, guardados, pares);
     } catch (err) {
       toast(err.message, true);
     }
