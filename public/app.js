@@ -743,7 +743,11 @@ function fieldInput(field, value, path) {
     case "moneda": {
       const unit = field.tipo === "moneda" ? `${CONFIG.moneda || "€"}${field.unidad || ""}` : field.unidad;
       const ph = field.placeholderAjuste ? ajusteValue(field.placeholderAjuste) : null;
-      const input = `<input type="number" inputmode="decimal" step="${field.tipo === "moneda" ? "0.01" : "any"}" min="0" ${attrs} value="${esc(value)}"
+      // Campo que admite una cuenta (p. ej. 4+2,5): texto libre y se guarda el resultado
+      const input = field.admiteSuma
+        ? `<input type="text" autocomplete="off" spellcheck="false" data-suma ${attrs} value="${esc(sumaTexto(value))}"
+            title="${SUMA_AYUDA}">`
+        : `<input type="number" inputmode="decimal" step="${field.tipo === "moneda" ? "0.01" : "any"}" min="0" ${attrs} value="${esc(value)}"
         ${!isEmpty(ph) ? `placeholder="${esc(numFmt.format(ph))} (por defecto)"` : ""}>`;
       return unit ? `<div class="with-unit">${input}<span>${esc(unit)}</span></div>` : input;
     }
@@ -849,9 +853,52 @@ function readInput(holder) {
     return h === "" && m === "" ? null : (Number(h) || 0) * 60 + (Number(m) || 0);
   }
   if (tipo === "booleano") return holder.checked;
+  if (holder.hasAttribute("data-suma")) return holder.value.trim() === "" ? null : evalSuma(holder.value); // NaN si no es válida
   if (tipo === "numero" || tipo === "moneda") return holder.value === "" ? null : Number(holder.value);
   if (tipo === "color") return normalizeHex(holder.value); // incompleto o no válido → no se guarda
   return holder.value.trim() === "" ? null : holder.value;
+}
+
+const SUMA_AYUDA = "Puedes escribir una suma, p. ej. 4+2,5+1";
+/** Número como se muestra en un campo que admite sumas (coma decimal). */
+const sumaTexto = (v) => (isEmpty(v) ? "" : String(v).replace(".", ","));
+
+/**
+ * Resultado de una cuenta sencilla escrita en un campo numérico: números (coma o punto decimal),
+ * + - * / y paréntesis. Devuelve NaN si no es válida o da negativo. Sin eval().
+ */
+function evalSuma(text) {
+  const s = String(text).replace(/\s+/g, "").replace(/,/g, ".");
+  if (!s || !/^[\d.+\-*/()]+$/.test(s)) return NaN;
+  let i = 0;
+  const factor = () => {
+    if (s[i] === "-") { i++; return -factor(); }
+    if (s[i] === "+") { i++; return factor(); }
+    if (s[i] === "(") {
+      i++;
+      const v = expr();
+      if (s[i] !== ")") return NaN;
+      i++;
+      return v;
+    }
+    const m = /^(\d+\.?\d*|\.\d+)/.exec(s.slice(i));
+    if (!m) return NaN;
+    i += m[0].length;
+    return Number(m[0]);
+  };
+  const term = () => {
+    let v = factor();
+    while (s[i] === "*" || s[i] === "/") v = s[i++] === "*" ? v * factor() : v / factor();
+    return v;
+  };
+  const expr = () => {
+    let v = term();
+    while (s[i] === "+" || s[i] === "-") v = s[i++] === "+" ? v + term() : v - term();
+    return v;
+  };
+  const v = expr();
+  if (i !== s.length || !Number.isFinite(v) || v < 0) return NaN;
+  return Math.round(v * 1e6) / 1e6; // sin restos de coma flotante (0.1+0.2)
 }
 
 /** Enlaza las entradas de `root` con el objeto `target` (por data-path). */
@@ -859,8 +906,20 @@ function bindInputs(root, target, after) {
   const handler = (e) => {
     const holder = e.target.closest("[data-path]");
     if (!holder || !root.contains(holder)) return;
+    const value = readInput(holder);
+    if (Number.isNaN(value)) {
+      // Cuenta a medio escribir (p. ej. «4+»): se avisa al salir del campo y al guardar
+      if (e.type === "change") holder.classList.add("invalid");
+      return;
+    }
     holder.classList.remove("invalid");
-    setPath(target, holder.dataset.path, readInput(holder));
+    setPath(target, holder.dataset.path, value);
+    if (e.type === "change" && holder.hasAttribute("data-suma")) {
+      // Se muestra el resultado; la cuenta escrita queda en la ayuda emergente
+      const texto = holder.value.trim();
+      holder.title = value !== null && texto !== sumaTexto(value) ? `${texto} = ${numFmt.format(value)}` : SUMA_AYUDA;
+      holder.value = sumaTexto(value);
+    }
     formDirty = true;
     after?.(holder, e);
   };
@@ -1133,6 +1192,8 @@ async function viewForm(id) {
       }
     }
     if (!checkRequired(missing)) return;
+    const malaSuma = form.querySelector("[data-suma].invalid");
+    if (malaSuma) { malaSuma.focus(); toast("Hay una cuenta que no se puede calcular (marcada en rojo)", true); return; }
 
     // Quitar filas que solo tienen valores por defecto.
     for (const sec of sections()) {
