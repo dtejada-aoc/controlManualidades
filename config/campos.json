@@ -78,6 +78,7 @@
       "agruparPor": "tipo",
       "desglose": "contar",
       "ordenarPor": ["tipo", "marca", "nombre"],
+      "cartaColores": { "titulo": "Carta de colores", "color": "colorHex", "nombre": "color", "detalle": ["marca", "nombre"] },
       "resumen": [
         { "id": "n",          "etiqueta": "Filamentos",          "tipo": "numero", "contar": true },
         { "id": "precioMedio","etiqueta": "Precio medio por kg", "tipo": "moneda", "unidad": "/kg", "media": "precioKg" },

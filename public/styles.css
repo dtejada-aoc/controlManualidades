@@ -504,3 +504,23 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; backgro
 @media print {
   .sheet-photo.fotos-2 img, .sheet-photo.fotos-3 img { height: 5.5cm; background: none; }
 }
+
+/* carta de colores (filamentos) */
+.color-group { margin-bottom: 22px; }
+.color-group h2 { margin: 0 0 10px; font-size: 1.05rem; }
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.color-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.color-block { height: 96px; display: flex; align-items: flex-end; justify-content: flex-end; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); font: 600 .72rem/1 ui-monospace, Consolas, monospace; }
+.color-block span { opacity: .85; }
+.color-info { padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; font-size: .88rem; }
+.color-info span { color: var(--muted); font-size: .8rem; }
+@media print {
+  .color-group { break-inside: auto; margin-bottom: 12px; }
+  .color-group h2 { break-after: avoid; }
+  .color-grid { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .color-card { break-inside: avoid; border-radius: 6px; }
+  .color-block { height: 22mm; }
+  .color-info { padding: 5px 7px; font-size: 8.5pt; }
+  .color-info span { font-size: 7.5pt; }
+}

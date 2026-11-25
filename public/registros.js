@@ -8,6 +8,7 @@
    =================================================================== */
 
 async function viewRegister(def, params = "") {
+  if (params === "carta" && def.cartaColores) return viewColorChart(def);
   await loadCatalogs();
   if (def.campos.some((f) => f.tipo === "impresion")) await loadPrints();
   let list = await api("GET", `/api/registros/${def.id}`);
@@ -38,7 +39,9 @@ async function viewRegister(def, params = "") {
     <div class="page-head">
       <div><h1>${esc(def.titulo)}</h1>
         ${def.descripcion ? `<p class="muted" style="margin:4px 0 0">${esc(def.descripcion)}</p>` : ""}</div>
-      <div class="actions"><button class="btn btn-primary" id="new">+ ${esc(nuevo)}</button></div>
+      <div class="actions">
+        ${def.cartaColores ? `<a class="btn" href="#/${esc(def.id)}?carta" title="Muestras de color para ver o guardar en PDF">${esc(def.cartaColores.titulo || "Carta de colores")}</a>` : ""}
+        <button class="btn btn-primary" id="new">+ ${esc(nuevo)}</button></div>
     </div>
     ${fixed.length ? `<div class="filter-chip">Filtrando por ${fixed.map(([k, v]) => {
       const f = def.campos.find((x) => x.id === k);
@@ -301,4 +304,71 @@ async function viewRegister(def, params = "") {
 
   document.getElementById("new").onclick = () => openEditor(null);
   render();
+}
+
+/**
+ * Carta de colores ("cartaColores" en la configuración del registro): una muestra grande
+ * por cada elemento que tiene el color configurado, agrupada (p. ej. por tipo de filamento),
+ * para verla en pantalla o guardarla en PDF.
+ */
+async function viewColorChart(def) {
+  const cfg = def.cartaColores;
+  const titulo = cfg.titulo || "Carta de colores";
+  const colorKey = cfg.color || "colorHex";
+  const list = (await api("GET", `/api/registros/${def.id}`)).filter((it) => isHexColor(it[colorKey]));
+  const groupField = def.campos.find((f) => f.id === def.agruparPor);
+  const text = (it, k) => String(it[k] ?? "").trim();
+  const sinGrupo = groupField ? `Sin ${groupField.etiqueta.toLowerCase()}` : "";
+
+  // Mismo orden que el listado (p. ej. tipo, marca, nombre) y después por nombre del color
+  const keys = [...asArray(def.ordenarPor), cfg.nombre].filter(Boolean);
+  list.sort((a, b) => keys.reduce((r, k) => r || text(a, k).localeCompare(text(b, k), "es"), 0));
+  const groups = new Map();
+  for (const it of list) {
+    const g = groupField ? text(it, groupField.id) || sinGrupo : "";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(it);
+  }
+
+  /** Texto blanco o negro según lo claro que sea el color. */
+  const ink = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#111" : "#fff";
+  };
+  const card = (it) => {
+    const hex = it[colorKey].toUpperCase();
+    // Sin repetir el color si el nombre ya lo lleva al final («PLA Basic Amarillo» → «PLA Basic»)
+    const color = text(it, cfg.nombre).toLowerCase();
+    const sinColor = (s) => (color && s.toLowerCase().endsWith(" " + color) ? s.slice(0, -color.length).trim() : s);
+    const detalle = asArray(cfg.detalle).map((k) => sinColor(text(it, k))).filter(Boolean).join(" · ");
+    return `<div class="color-card">
+      <div class="color-block" style="background:${hex};color:${ink(hex)}"><span>${esc(hex)}</span></div>
+      <div class="color-info">
+        <strong>${esc(text(it, cfg.nombre) || "Sin nombre de color")}</strong>
+        ${detalle ? `<span>${esc(detalle)}</span>` : ""}
+      </div>
+    </div>`;
+  };
+  const generado = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+
+  app.innerHTML = `
+    <div class="report-toolbar no-print">
+      <a class="btn" href="#/${esc(def.id)}">← ${esc(def.titulo)}</a>
+      <div class="report-actions">
+        <button class="btn btn-primary" id="carta-pdf" ${list.length ? "" : "disabled"}>Exportar PDF</button>
+      </div>
+    </div>
+    <header class="report-head">
+      <div class="print-only report-brand">Impresiones 3D</div>
+      <h1>${esc(titulo)}</h1>
+      <p class="muted">${list.length} ${esc(def.titulo.toLowerCase())} con color · Generado el ${esc(generado)}</p>
+    </header>
+    ${list.length ? [...groups].map(([g, items]) => `<section class="color-group">
+        ${g ? `<h2>${esc(g)} <span class="muted">(${items.length})</span></h2>` : ""}
+        <div class="color-grid">${items.map(card).join("")}</div>
+      </section>`).join("")
+      : `<div class="card empty"><h2>Ningún ${esc((def.elemento || "elemento").toLowerCase())} tiene color</h2>
+        <p class="muted">Pon la <strong>muestra de color</strong> en cada uno para que salga en la carta.</p></div>`}
+  `;
+  document.getElementById("carta-pdf").onclick = () => printAs(titulo);
 }
